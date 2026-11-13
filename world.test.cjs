@@ -5,7 +5,7 @@ const context={THREE:T,console};context.globalThis=context;vm.createContext(cont
 vm.runInContext(fs.readFileSync(path.join(__dirname,'level.js'),'utf8'),context);
 function create(){const scene=new T.Scene(),level=context.AshenLevel.create({THREE:T,scene,M:{}});return {scene,level};}
 function walkable(level,x,z){
- const r=.29;
+ const r=.46;
  if(!level.bounds.some(b=>x>=b.x-b.w/2+r&&x<=b.x+b.w/2-r&&z>=b.z-b.d/2+r&&z<=b.z+b.d/2-r))return false;
  return !level.obstacles.some(o=>o.w!=null?x>o.x-o.w/2-r&&x<o.x+o.w/2+r&&z>o.z-o.d/2-r&&z<o.z+o.d/2+r:Math.hypot(x-o.x,z-o.z)<r+o.r);
 }
@@ -98,4 +98,15 @@ test('world rain respects chapel shelter, quality budget and reduced-motion impa
  weather.setReducedMotion(true);assert.equal(rings.visible,false);weather.update(1/60,4,{x:0,z:15});assert.ok(rain.material.opacity<.08);
  weather.setReducedMotion(false);assert.equal(rings.visible,true);
  weather.dispose();assert.equal(scene.children.length,0);
+});
+
+
+test('accessible stone props have solid extents and low masonry retains its real height',()=>{
+ const {level}=create();try{
+  const counts=kind=>level.obstacles.filter(o=>o.kind===kind).length;
+  assert.equal(counts('headstone'),7);assert.equal(counts('reliquary'),3);assert.equal(counts('mourner statue'),4);assert.equal(counts('arrival pier'),2);
+  const lintel=level.obstacles.find(o=>o.kind==='fallen masonry'),column=level.obstacles.find(o=>o.kind==='fallen column');
+  assert.ok(lintel.w>1.5&&lintel.d>.9,'the rotated stone footprint must include its actual corners');assert.ok(lintel.h>.45&&lintel.h<.6);
+  assert.ok(column.h<1.05,'a fallen column is not an invisible four-meter wall');assert.ok(walkable(level,level.spawn.x,level.spawn.z));
+ }finally{level.dispose();}
 });

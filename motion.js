@@ -8,7 +8,10 @@ function createAnimator(actor,T){
   const find=re=>clips.find(c=>re.test(c.name));
   const defs={idle:find(/idle|standing|breath/i),walk:find(/walk/i),run:find(/sprint|run/i)||find(/jog/i),attack:find(/attack|slash|strike/i),hit:find(/hit|hurt|damage/i),jump:find(/jump/i),kick:find(/kick/i)};
   for(const [key,clip]of Object.entries(defs))if(clip){const action=mix.clipAction(clip);action.enabled=true;action.clampWhenFinished=true;action.setLoop(T.LoopRepeat,Infinity);action.play();action.setEffectiveWeight(0);actions[key]=action;}
-  let lastState='',lastTime=0,clock=0,locomotion=0,clothVelocity=0,lastSpeed=0,guardBlend=0,turnLean=0,combatBlend=0,landingAge=1;
+  if(!global.AshenLocomotion||!global.AshenRigConstraints)throw new Error('Load locomotion.js and rig-constraints.js before creating a character.');
+  const gaitDriver=global.AshenLocomotion.create(actor,T),constraints=global.AshenRigConstraints.create(actor,T);
+  let transitionAge=1,transitionFrom=null;
+  let lastState='',lastTime=0,clock=0,clothVelocity=0,lastSpeed=0,guardBlend=0,turnLean=0,combatBlend=0,landingAge=1;
   let clothLag=0,clothYaw=0,clothYawVelocity=0,clothNormalAge=0;
   const previousPivot=new T.Quaternion(),posePivot=new T.Quaternion(),rollAxis=new T.Vector3(),localTravel=new T.Vector3(),identity=new T.Quaternion();
   const axis=new T.Vector3(),parentQ=new T.Quaternion(),worldQ=new T.Quaternion(),deltaQ=new T.Quaternion(),rootQ=new T.Quaternion(),flashColor=new T.Color(),bonePoint=new T.Vector3(),childPoint=new T.Vector3(),currentDirection=new T.Vector3(),wantedDirection=new T.Vector3(),aimDelta=new T.Quaternion(),parentInverse=new T.Quaternion(),localDelta=new T.Quaternion(),swordQuaternion=new T.Quaternion();
@@ -25,7 +28,7 @@ function createAnimator(actor,T){
   }
   function authoredSword(time,a,o){
     const side=actor.anatomyRightSign||-1,index=a.profile.index??a.profile.combo??o.comboIndex??0,flip=index%2===1?-1:1,wind=a.wind,active=a.active,end=a.duration;
-    const ready={u:[side*(.24+.03*combatBlend),-.94+.11*combatBlend,.24+.24*combatBlend],f:[side*.06,-.54+.26*combatBlend,.84+.12*combatBlend],s:[side*.06,-.48+.33*combatBlend,.88+.10*combatBlend],x:0,y:0};
+    const ready=constraints.readyRight({combat:combatBlend,speed:o.speed,phase:actor.gaitPhase});
     const anticipate=a.heavy?{u:[side*.24,.72,.65],f:[-side*.18,.93,-.31],s:[0,.91,-.42],x:-.11,y:-.18}:{u:[side*.77,-.04,-.64],f:[-side*.14,.40,-.90],s:[side*.50*flip,.48,-.72],x:-.03,y:-.52*flip};
     const contact=a.heavy?{u:[side*.16,-.42,.89],f:[-side*.06,-.50,.86],s:[0,-.40,.92],x:.22,y:.13}:{u:[-side*.20,-.34,.92],f:[-side*.54,-.10,.84],s:[0,-.16,.99],x:.09,y:.60*flip};
     const follow=a.heavy?{u:[side*.15,-.87,.46],f:[-side*.08,-.74,.67],s:[.05,-.77,.64],x:.16,y:.16}:{u:[-side*.75,-.28,.59],f:[-side*.72,-.52,-.05],s:[-side*.96*flip,-.20,-.20],x:.07,y:.81*flip};
@@ -43,7 +46,6 @@ function createAnimator(actor,T){
     offset(bones.chest||bones.spine,pitch,yaw,0);aim(bones.rightUpper,bones.rightFore,vector('u'));aim(bones.rightFore,bones.rightHand,vector('f'));orientWrist(vector('s'));
     // The free arm counters torque; the hips absorb contact while authored source
     // foot poses remain the base, avoiding a rigid torso-only sword wave.
-    aim(bones.leftUpper,bones.leftFore,[-side*.45,-.70,.55],.8);aim(bones.leftFore,bones.leftHand,[side*.10,-.28,.95],.8);
     const plant=Math.sin(Math.PI*clamp(time/end,0,1)),coil=smooth(time/Math.max(.05,wind*.72))*(1-smooth((time-wind)/Math.max(.07,active))),drive=smooth((time-wind)/Math.max(.07,active))*(1-smooth((time-wind-active-a.followThrough)/Math.max(.08,a.recovery)));
     // The hips load before the shoulders, then the opposite leg catches the
     // weight. The controller still owns all translation and blade hit timing.
@@ -64,7 +66,9 @@ function createAnimator(actor,T){
     const attacking=state==='light'||state==='heavy'||state==='attack',hurt=state==='hurt'||state==='stagger',rolling=state==='roll'||state==='dodge',healing=state==='heal';
     const newAction=state!==lastState||time<lastTime-.05;
     if(newAction&&(lastState==='roll'||lastState==='dodge')&&!rolling)landingAge=0;
+    if(newAction){transitionFrom=defaults.map(d=>d.bone.quaternion.clone());transitionAge=0;}transitionAge+=dt;
     landingAge+=dt;
+    const gaitFrame=gaitDriver.update({dt,speed,moveX:o.moveX,moveZ:o.moveZ,enabled:!rolling&&!dead&&!attacking&&!hurt&&!healing});actor.gaitFrame=gaitFrame;
     combatBlend+=((o.combat||o.guarding?1:0)-combatBlend)*(1-Math.exp(-6*dt));
     // Author all skeletal directions in an unrolled frame. Reusing last frame's
     // pivot here made the limbs fight the tumble and the sockets orbit the body.
@@ -79,33 +83,29 @@ function createAnimator(actor,T){
     else if(state==='kick'&&actions.kick){desired.kick=1;if(newAction)actions.kick.reset();actions.kick.paused=true;actions.kick.time=Math.min(time,defs.kick.duration*.98);}
     else if(state==='jump'&&actions.jump){desired.jump=1;if(newAction)actions.jump.reset();actions.jump.paused=true;actions.jump.time=Math.min(time,defs.jump.duration*.98);}
     else if(rolling){desired.idle=1;}
-    else if(speed>.12&&!dead&&!healing&&!hurt){const run=clamp((speed-2.3)/1.5,0,1);if(actions.walk)desired.walk=1-run;if(actions.run)desired.run=run;else desired.walk=1;}
+    else if(speed>.12&&!dead&&!healing&&!hurt){const run=gaitFrame.runWeight;if(actions.walk)desired.walk=1-run;if(actions.run)desired.run=run;else desired.walk=1;}
     else desired.idle=1;
     if(!actions.idle){const k=Object.keys(actions)[0];if(k&&Object.values(desired).every(v=>v===0))desired[k]=1;}
     let sum=0;
     actor.root.getWorldQuaternion(rootQ);localTravel.set(Number(o.moveX)||0,0,Number(o.moveZ)||0).applyQuaternion(rootQ.clone().invert());
-    const backwards=localTravel.lengthSq()>.04&&localTravel.z<-.1;
-    const walkDistance=actor.gait?.walk?.distance||2.9,runDistance=actor.gait?.run?.distance||4.9,gaitMix=desired.run||0,strideDistance=(walkDistance+(runDistance-walkDistance)*gaitMix)*actor.root.scale.x;
-    if(!rolling&&!dead&&!attacking&&!hurt&&!healing)locomotion+=(backwards?-1:1)*dt*speed/Math.max(.5,strideDistance);
-    const gaitPhase=((locomotion%1)+1)%1;actor.gaitPhase=gaitPhase;
-    for(const [k,action]of Object.entries(actions)){const target=desired[k]||0,current=action.getEffectiveWeight(),weight=current+(target-current)*(1-Math.exp(-(attacking||hurt?35:10)*dt));action.enabled=true;action.setEffectiveWeight(weight);sum+=weight;if(k==='walk'||k==='run'){action.paused=true;action.time=gaitPhase*defs[k].duration;}else if(k==='idle'){action.paused=false;action.setEffectiveTimeScale(.85);}}
+    const gaitPhase=gaitFrame.phase;actor.gaitPhase=gaitPhase;
+    for(const [k,action]of Object.entries(actions)){const target=desired[k]||0,current=action.getEffectiveWeight(),weight=current+(target-current)*(1-Math.exp(-(attacking||hurt?35:10)*dt));action.enabled=true;action.setEffectiveWeight(weight);sum+=weight;if(k==='walk'||k==='run'){action.paused=true;action.time=k==='walk'?gaitFrame.walkTime:gaitFrame.runTime;}else if(k==='idle'){action.paused=false;action.setEffectiveTimeScale(.85);}}
     if(sum>.0001)for(const action of Object.values(actions))action.setEffectiveWeight(action.getEffectiveWeight()/sum);
     mix.update(dt);
     actor.root.updateWorldMatrix(true,true);
     const spine=bones.spine,chest=bones.chest||spine;
-    if(speed>.12&&!attacking&&!rolling&&!hurt&&!dead&&!healing&&localTravel.lengthSq()>.04){const strideYaw=Math.atan2(localTravel.x*(backwards?-1:1),Math.abs(localTravel.z))*.65;offset(bones.hips,0,strideYaw,0);offset(chest,0,-strideYaw*.85,0);}
+    if(speed>.12&&!attacking&&!rolling&&!hurt&&!dead&&!healing&&localTravel.lengthSq()>.04){const strideYaw=gaitFrame.directionYaw;offset(bones.hips,0,strideYaw,0);offset(chest,0,-strideYaw*.85,0);}
     if(!attacking&&!rolling&&!dead){
-      const side=actor.anatomyRightSign||-1;aim(bones.rightUpper,bones.rightFore,[side*(.24+.03*combatBlend),-.94+.11*combatBlend,.24+.24*combatBlend],.85);aim(bones.rightFore,bones.rightHand,[side*.06,-.54+.26*combatBlend,.84+.12*combatBlend],.9);orientWrist([side*.06,-.48+.33*combatBlend,.88+.10*combatBlend]);
       if(!hurt&&!healing){
         const fatigue=1-clamp(Number.isFinite(o.staminaRatio)?o.staminaRatio:1,0,1),breath=Math.sin(t*(1.65+fatigue*.9)),still=1-clamp(speed/3.5,0,1);
         offset(chest,breath*(.009+fatigue*.008)*still,0,Math.sin(t*.78)*.003*still);
         offset(bones.head,-breath*.005*still,clamp(Number(o.yawRate)||0,-3,3)*-.012,0);
-        if(!o.guarding){offset(bones.leftUpper,breath*.008*still,0,-.012*combatBlend);offset(bones.leftFore,-.035*combatBlend,0,0);}
       }
     }
     guardBlend+=((o.guarding&&!attacking&&!dead&&!rolling?1:0)-guardBlend)*(1-Math.exp(-18*dt));
-    if(guardBlend>.002&&!attacking&&!dead&&!rolling){const side=actor.anatomyRightSign||-1;aim(bones.leftUpper,bones.leftFore,[-side*.42,-.48,.77],guardBlend);aim(bones.leftFore,bones.leftHand,[side*.16,.67,.73],guardBlend);offset(chest,.08*guardBlend,-.12*guardBlend,.025*guardBlend);offset(bones.leftThigh,-.12*guardBlend,0,0);offset(bones.leftShin,.18*guardBlend,0,0);offset(bones.rightShin,.12*guardBlend,0,0);offset(bones.rightUpper,-.15*guardBlend,.10*guardBlend,0);}
-    if(healing&&!dead){const raise=smooth(time/.24)*(1-smooth((time-1.0)/.20));offset(bones.leftUpper,-1.38*raise,.28*raise,-.17*raise);offset(bones.leftFore,-1.0*raise,0,0);offset(bones.head,.13*raise,0,0);offset(chest,.035*raise,0,0);}
+    if(guardBlend>.002&&!attacking&&!dead&&!rolling){const side=actor.anatomyRightSign||-1;offset(chest,.08*guardBlend,-.12*guardBlend,.025*guardBlend);offset(bones.leftThigh,-.12*guardBlend,0,0);offset(bones.leftShin,.18*guardBlend,0,0);offset(bones.rightShin,.12*guardBlend,0,0);}
+    if(healing&&!dead){const focus=smooth(time/.24)*(1-smooth((time-1.0)/.25));offset(bones.head,.16*focus,0,0);offset(chest,.095*focus,0,0);offset(bones.leftThigh,-.09*focus,0,0);offset(bones.rightThigh,-.07*focus,0,0);offset(bones.leftShin,.13*focus,0,0);offset(bones.rightShin,.11*focus,0,0);}
+    if(actor.flaskMaterial)actor.flaskMaterial.emissiveIntensity=.04+(healing?Math.sin(Math.min(1,time/1.25)*Math.PI)**2*.8:0);
     if(attacking){
       if(!actor.useSourceAttack)authoredSword(time,a,o);
       const charge=smooth(time/a.wind),release=smooth((time-a.wind)/Math.max(.16,a.active)),recover=1-smooth((time-a.wind-a.active)/Math.max(.2,a.recovery));
@@ -117,6 +117,8 @@ function createAnimator(actor,T){
     if(hurt){const recoil=(1-smooth(time/(state==='stagger'?1.15:.46)));offset(chest,-.20*recoil,0,.08*recoil);offset(bones.head,.16*recoil,0,0);offset(bones.rightUpper,.16*recoil,0,0);}
     if(state==='stagger'){const kneel=smooth(time/.22);offset(chest,.38*kneel,0,-.08*kneel);offset(bones.head,.26*kneel,0,0);offset(bones.leftThigh,-.34*kneel,0,0);offset(bones.leftShin,.62*kneel,0,0);offset(bones.rightShin,.26*kneel,0,0);}
     if(state==='phase'){const power=smooth(time/.55);offset(bones.rightUpper,-1.0*power,0,.35*power);offset(bones.leftUpper,-.40*power,0,-.30*power);offset(chest,-.08*power,0,0);offset(bones.head,-.13*power,0,0);}
+    if(transitionFrom&&transitionAge<.10){const blend=smooth(transitionAge/.10);for(let i=0;i<defaults.length;i++){const bone=defaults[i].bone,q=bone.quaternion.clone();bone.quaternion.copy(transitionFrom[i]).slerp(q,blend);}actor.root.updateWorldMatrix(true,true);}
+    constraints?.carries({combat:combatBlend,guard:guardBlend,speed,phase:gaitPhase,attacking,rolling,healing,hurt,dead,obstacles:o.obstacles});
     let pivotY=state==='stagger'?.79:.95;posePivot.identity();
     if(rolling){
       const duration=Math.max(.2,o.attack?.total||.62),u=clamp(time/duration,0,1),launch=smooth(u/.18),unfold=smooth((u-.69)/.31),tuck=launch*(1-unfold);
@@ -138,6 +140,7 @@ function createAnimator(actor,T){
       // Keep the blade across the tumble's horizontal axis instead of driving
       // its tip through the floor as the head passes underneath the hips.
       orientWrist([rollAxis.x*side,0,rollAxis.z*side],tuck);
+      constraints?.tuck(tuck,rollAxis);
       actor.motionFrame={state,progress:u,tuck,angle,axis:{x:rollAxis.x,y:rollAxis.y,z:rollAxis.z}};
     }else{
       const acceleration=dt>0?clamp((speed-lastSpeed)/dt,-14,14):0;
@@ -153,7 +156,7 @@ function createAnimator(actor,T){
     actor.pivot.quaternion.copy(posePivot);actor.pivot.position.y=rolling||dead?pivotY:previousHeight+(pivotY-previousHeight)*(1-Math.exp(-18*dt));
     // Ground the weighted silhouette, rather than a bind-pose box. This is
     // visual-only; gameplay root X/Z and collision remain controller-owned.
-    if((rolling||dead||state==='stagger'||lastState==='roll'||lastState==='dodge')&&actor.groundBounds){const ground=actor.groundBounds(),lift=rolling?.025*Math.sin(actor.motionFrame.progress*Math.PI):0,floor=actor.root.position.y+(.018+lift)*actor.root.scale.y;if(Number.isFinite(ground.min)&&(rolling||dead||state==='stagger'||ground.min<floor))actor.pivot.position.y+=(floor-ground.min)/actor.root.scale.y;}
+    constraints.ground({rolling,dead,state,running:gaitFrame.runWeight>.5,contact:Math.max(gaitFrame.contacts.left,gaitFrame.contacts.right)});
     const accel=dt>0?(speed-lastSpeed)/dt:0;
     // Damped cloth follows a start, brake and turn with a slight delay; it never
     // changes the body's root. Pinning the shoulder row prevents rubber cloth.
@@ -173,8 +176,8 @@ function createAnimator(actor,T){
     }
     actor.motionDetails={combat:combatBlend,landing:Math.max(0,1-landingAge/.2),clothLag,clothYaw};
     actor.hit=Math.max(0,actor.hit-dt);for(const item of actor.materials){const base=item.baseEmissive;item.material.emissive.copy(base);if(actor.hit>0)item.material.emissive.add(flashColor.setRGB(actor.hit*.75,actor.hit*.09,.005));}
-    if(actor.shield)actor.shield.visible=!healing&&!dead;
-    actor.root.updateWorldMatrix(true,true);actor.updateEquipment();
+    if(actor.shield)actor.shield.visible=true;
+    actor.root.updateWorldMatrix(true,true);actor.updateEquipment();constraints?.equipmentFloor({rolling});if(rolling||dead||state==='stagger')constraints?.finalGround();constraints?.cloth();
     lastState=state;lastTime=time;actor.currentClip=attacking&&!actor.useSourceAttack?'authored-sword-'+state:Object.entries(desired).sort((a,b)=>b[1]-a[1])[0][0];
   }
   return animate;

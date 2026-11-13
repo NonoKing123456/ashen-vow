@@ -49,6 +49,7 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  function beam(p,a,b,r,m=ashStone,sides=7){const v=new T.Vector3(...a),w=new T.Vector3(...b),d=w.clone().sub(v),mid=v.clone().add(w).multiplyScalar(.5);const o=cylinder(p,mid.x,mid.y,mid.z,r,d.length(),m,sides);o.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),d.normalize());return o;}
  function ring(p,x,y,z,r,t,m=bronze,n=40){return mesh(p,new T.TorusGeometry(r,t,5,n),m,x,y,z);}
  function blockCollision(x,z,w,d,name='wall'){const c={x,z,w,d,kind:name};obstacles.push(c);return c;}
+ function solid(object,kind){object.updateWorldMatrix(true,true);const bounds=new T.Box3().setFromObject(object),size=bounds.getSize(new T.Vector3()),center=bounds.getCenter(new T.Vector3());const c=blockCollision(center.x,center.z,size.x,size.z,kind);c.h=Math.max(.05,bounds.max.y);return object;}
  // Chamfered rectangular piers carry weight into stepped footings.
  function chamfer(w,d,h,ch=.14){const s=new T.Shape(),x=w*.5,z=d*.5;s.moveTo(-x+ch,-z);s.lineTo(x-ch,-z);s.lineTo(x,-z+ch);s.lineTo(x,z-ch);s.lineTo(x-ch,z);s.lineTo(-x+ch,z);s.lineTo(-x,z-ch);s.lineTo(-x,-z+ch);s.closePath();const g=new T.ExtrudeGeometry(s,{depth:h,bevelEnabled:false,steps:1});g.rotateX(-PI/2);return g;}
  function pier(p,x,z,h=6,w=1.1,d=1.25){const q=group(p,x,0,z);box(q,0,.16,0,w+.4,.32,d+.4,deep);box(q,0,.39,0,w+.22,.14,d+.22,edge);mesh(q,chamfer(w,d,h-.55,.12),obsidian,0,.46,0);for(const y of [1.2,h*.53,h-.22])box(q,0,y,0,w+.075,.10,d+.075,weathered);box(q,0,h+.04,0,w+.3,.23,d+.3,edge);box(q,0,h+.23,0,w+.48,.15,d+.45,deep);return q;}
@@ -79,10 +80,10 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  // I. The arrival: a collapsed portico, thick perimeter walls and a view back
  // over the ashen valley. The dominant axis leads directly to the sealed gate.
  wall(-5.0,16.0,1.0,12.3,2.9,true);wall(5.0,16.0,1.0,12.3,3.6,true);
- for(const x of [-4.15,4.15])pier(architecture,x,20.1,5.0,1.05,1.3);
+ for(const x of [-4.15,4.15])solid(pier(architecture,x,20.1,5.0,1.05,1.3),'arrival pier');
  arch(architecture,0,5.0,20.1,7.3,2.0,.52,1.0,ashStone,true);
  const brokenLintel=box(architecture,-2.6,.25,19,1.5,.48,.9,obsidian);brokenLintel.rotation.y=.42;
- blockCollision(-2.6,19,1.5,.9,'fallen masonry');
+ solid(brokenLintel,'fallen masonry');
  // Exile court walls open only where the small side chapel actually connects.
  wall(6.55,1.2,1.1,18.2,5.2,true);wall(-6.55,8.4,1.1,3.3,4.3,true);wall(-6.55,-3.45,1.1,6.9,5.4,true);
  wall(-5.7,11.4,1.8,1.1,3.4,true);wall(5.7,11.4,1.8,1.1,4.0,true);
@@ -101,9 +102,9 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  // II. The Chapel of Embers: an asymmetric refuge, identified by its single
  // warm window, open east door and a small shrine beneath the broken roof.
  wall(-12.55,3.25,1.1,7.6,6.9,true);wall(-9.0,7.05,8.2,1.1,5.8,true);wall(-9.0,-.55,8.2,1.1,5.5,true);
- for(const z of [.3,6.2])pier(architecture,-6.5,z,5.0,.9,1.0);
+ for(const z of [.3,6.2])solid(pier(architecture,-6.5,z,5.0,.9,1.0),'chapel doorway');
  const chapelDoor=group(architecture,-6.35,0,3.25);chapelDoor.rotation.y=PI/2;arch(chapelDoor,0,4.8,0,4.7,1.65,.4,.75,ashStone);
- for(const z of [.5,6.0])pier(architecture,-11.4,z,6.3,.65,.8);
+ for(const z of [.5,6.0])solid(pier(architecture,-11.4,z,6.3,.65,.8),'chapel pier');
  const westWindow=structuralWindow(architecture,-11.96,2.6,3.2,1.4,2.15);westWindow.rotation.y=PI/2;
  // An amber mineral lens is genuine mesh geometry set into the old window.
  const glass=mat('#ae6f33',.1,.44);glass.emissive.set('#6e3915');glass.emissiveIntensity=.32;const lens=mesh(architecture,new T.IcosahedronGeometry(.58,0),glass,-11.83,4.75,3.2);lens.scale.set(.075,1.75,.78);
@@ -114,11 +115,11 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  const bowlProfile=[new T.Vector2(.12,0),new T.Vector2(.19,.07),new T.Vector2(.34,.17),new T.Vector2(.38,.24),new T.Vector2(.35,.26),new T.Vector2(.30,.18)];mesh(altar,new T.LatheGeometry(bowlProfile,20),bronze,0,.85,0);
  beam(altar,[0,1.0,0],[0,2.25,0],.035,M.steel||edge,6);box(altar,0,1.78,0,.49,.065,.10,bronze);ball(altar,0,2.30,0,.06,.08,.06,bronze);
  for(const s of [-1,1])for(let i=0;i<3;i++)beam(altar,[0,1.4+i*.11,.06],[s*(.10+i*.03),1.51+i*.11,.06],.013,bronze,5);
- blockCollision(-10.8,3.25,1.3,1.9,'chapel altar');
+ solid(altar,'chapel altar');
 
  // III. The Oath Gate: two articulated heavy leaves, carried by stone towers.
  for(const side of [-1,1]){
-  pier(architecture,side*3.85,-8.0,7.0,1.65,2.1);wall(side*8.2,-8,6.7,1.4,5.5,true);
+  solid(pier(architecture,side*3.85,-8.0,7.0,1.65,2.1),'gate pier');wall(side*8.2,-8,6.7,1.4,5.5,true);
   const tower=group(architecture,side*5.0,0,-9.0);box(tower,0,4.8,0,2.15,9.6,3.1,obsidian);box(tower,0,9.7,0,2.65,.30,3.4,edge);cylinder(tower,0,10.9,0,1.65,2.05,deep,4,0).rotation.y=PI/4;cylinder(tower,0,12.2,0,.065,.8,bronze,6,0);
   const buttress=box(architecture,side*5.75,2.4,-6.6,1.1,4.8,3.7,weathered);buttress.rotation.x=-.06;
  }
@@ -129,7 +130,7 @@ function create({THREE:T,scene,renderer,M,surfaces}){
   const center=group(p,x,2.85,.25);ring(center,0,0,0,.47,.04,bronze);for(const s of [-1,1])for(let i=0;i<3;i++)beam(center,[0,-.5+i*.28,.02],[s*(.22-i*.045),-.23+i*.28,.02],.018,bronze,5);beam(center,[0,-.9,.02],[0,.88,.02],.025,bronze,6);
   for(const y of [1.1,4.3]){const hinge=cylinder(p,0,y,.02,.115,.7,bronze,10);box(p,x,y,.23,2.76,.14,.08,bronze);}
  }
- door(doorLeft,-1);door(doorRight,1);const gateBarrier={x:0,z:-8,w:6.3,d:.7,kind:'gate'};obstacles.push(gateBarrier);let gateTarget=0,gateAmount=0;
+ door(doorLeft,-1);door(doorRight,1);const gateBarrier={x:0,z:-8,w:6.3,d:.7,kind:'gate',h:5.8};obstacles.push(gateBarrier);let gateTarget=0,gateAmount=0;
 
  // IV. Hall of the Uncrowned: a broad, quiet fighting floor framed by massive
  // side piers and a broken roof. Its throne and vertical rear aperture set the
@@ -137,7 +138,7 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  wall(-12.2,-21.0,1.4,26.8,6.0,true);wall(12.2,-21.0,1.4,26.8,7.2,true);wall(0,-34.7,25.5,1.8,9.2,true);
  for(const side of [-1,1])for(const [z,h]of [[-14.5,7.0],[-24,8.8],[-31.0,9.3]]){
   const q=pier(architecture,side*10.75,z,h,1.3,1.6);box(q,side*.72,h*.35,0,1.2,h*.70,2.0,deep);const brace=box(q,side*.55,h*.62,0,.65,h*.53,1.8,weathered);brace.rotation.z=side*.20;
-  blockCollision(side*10.75,z,1.65,1.8,'hall pier');
+  const collider=blockCollision(side*10.75,z,1.65,1.8,'hall pier');collider.h=h+.4;
  }
  // Roof ribs terminate on these piers; missing center bays expose the night sky.
  for(const [z,base,rise]of [[-14.5,7.0,3.9],[-24,8.8,4.3],[-31,9.3,4.5]]){
@@ -153,7 +154,7 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  const sealFloor=group(architecture,0,.017,-25.0);for(const [start,len]of [[.12,1.8],[2.4,1.7],[4.7,1.0]]){const o=mesh(sealFloor,new T.TorusGeometry(4.4,.016,4,54,len),bronze);o.rotation.set(PI/2,0,start);}for(const a of [.3,2.2,4.5])curve(sealFloor,[[Math.sin(a)*1.3,0,Math.cos(a)*1.3],[Math.sin(a+.06)*2.5,0,Math.cos(a+.06)*2.5],[Math.sin(a-.03)*4.5,0,Math.cos(a-.03)*4.5]],.018,fracture,7,3);
  // The raised rear shrine is intentionally outside the fighting route.
  for(let i=0;i<5;i++)box(architecture,0,.10+i*.21,-31.2-i*.57,7.6-i*.32,.22,.72,weathered);
- blockCollision(0,-32.6,8.0,3.4,'raised shrine');
+ blockCollision(0,-32.6,8.0,3.4,'raised shrine').h=1.22;
  const throne=group(architecture,0,1.1,-33.4);box(throne,0,.16,0,2.2,.32,1.6,deep);box(throne,0,.56,0,1.6,.46,1.3,obsidian);box(throne,0,1.7,-.47,1.6,2.4,.30,obsidian);for(const x of [-.95,.95]){box(throne,x,.90,.05,.32,1.5,1.6,weathered);cylinder(throne,x,1.85,-.47,.12,.7,bronze,5,0);}arch(throne,0,2.8,-.47,1.5,1.3,.22,.36,edge);box(throne,0,1.5,-.27,.035,1.55,.04,bronze);
 
  // A single rose above the bell completes the processional axis. Restrained
@@ -177,7 +178,7 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  }
 
  // Sculptural landmarks have individual placement and readable silhouette.
- function mourner(x,z,s=1,headless=false,yaw=0){const q=group(architecture,x,0,z);q.scale.setScalar(s);q.rotation.y=yaw;box(q,0,.18,0,1.35,.36,1.35,deep);box(q,0,.45,0,1.14,.18,1.14,edge);const profile=[new T.Vector2(.48,.55),new T.Vector2(.45,.8),new T.Vector2(.29,1.65),new T.Vector2(.33,2.15),new T.Vector2(.24,2.43)];mesh(q,new T.LatheGeometry(profile,18),robe);for(let i=0;i<7;i++){const a=i/7*TAU;curve(q,[[Math.sin(a)*.46,.58,Math.cos(a)*.46],[Math.sin(a)*.31,1.5,Math.cos(a)*.31],[Math.sin(a)*.26,2.29,Math.cos(a)*.26]],.022,weathered,8,4);}if(!headless){ball(q,0,2.67,0,.23,.29,.22,bone);const hood=mesh(q,new T.SphereGeometry(.31,14,10,0,TAU,0,PI*.64),obsidian,0,2.78,-.04);hood.scale.y=1.1;ball(q,0,2.65,.20,.14,.17,.025,deep,10);}for(const side of [-1,1]){beam(q,[side*.28,2.12,0],[side*.36,1.75,.20],.085,robe);beam(q,[side*.36,1.75,.20],[side*.05,1.9,.40],.07,robe);}cylinder(q,0,1.82,.40,.11,.21,bronze,9,.16);return q;}
+ function mourner(x,z,s=1,headless=false,yaw=0){const q=group(architecture,x,0,z);q.scale.setScalar(s);q.rotation.y=yaw;box(q,0,.18,0,1.35,.36,1.35,deep);box(q,0,.45,0,1.14,.18,1.14,edge);const profile=[new T.Vector2(.48,.55),new T.Vector2(.45,.8),new T.Vector2(.29,1.65),new T.Vector2(.33,2.15),new T.Vector2(.24,2.43)];mesh(q,new T.LatheGeometry(profile,18),robe);for(let i=0;i<7;i++){const a=i/7*TAU;curve(q,[[Math.sin(a)*.46,.58,Math.cos(a)*.46],[Math.sin(a)*.31,1.5,Math.cos(a)*.31],[Math.sin(a)*.26,2.29,Math.cos(a)*.26]],.022,weathered,8,4);}if(!headless){ball(q,0,2.67,0,.23,.29,.22,bone);const hood=mesh(q,new T.SphereGeometry(.31,14,10,0,TAU,0,PI*.64),obsidian,0,2.78,-.04);hood.scale.y=1.1;ball(q,0,2.65,.20,.14,.17,.025,deep,10);}for(const side of [-1,1]){beam(q,[side*.28,2.12,0],[side*.36,1.75,.20],.085,robe);beam(q,[side*.36,1.75,.20],[side*.05,1.9,.40],.07,robe);}cylinder(q,0,1.82,.40,.11,.21,bronze,9,.16);solid(q,'mourner statue');return q;}
  mourner(-4.65,-5.6,1.05,false,.14);mourner(4.6,-5.6,1.05,true,-.14);mourner(-8.8,-30.6,1.52,false,.4);mourner(8.9,-30.2,1.52,true,-.4);
  // Headstones and collapsed architectural fragments belong at the boundaries.
  for(const [i,[x,z,yaw]]of [[-3.9,14.0,.1],[3.5,19.1,-.2],[-5.1,9.8,.15],[4.8,5.3,-.3],[-11.1,5.6,.6],[9.5,-18.5,-.8],[-10,-27.2,.2]].entries()){
@@ -188,13 +189,13 @@ function create({THREE:T,scene,renderer,M,surfaces}){
   mesh(q,geo,edge);box(q,0,.07,0,.60,.13,.31,weathered);
   curve(q,[[-.19,.25,.082],[-.19,.68,.082],[0,.84,.082],[.19,.68,.082],[.19,.25,.082]],.009,obsidian,22,4);
   box(q,0,.59,.086,.028,.23,.012,bronze);box(q,0,.63,.086,.15,.026,.012,bronze);
-  for(let line=0;line<3;line++)box(q,0,.37-line*.055,.086,.17-line*.022,.011,.010,obsidian,false);
+  for(let line=0;line<3;line++)box(q,0,.37-line*.055,.086,.17-line*.022,.011,.010,obsidian,false);solid(q,'headstone');
  }
  for(const [cx,cz,count,radius]of [[-5.5,10,15,1.0],[5.2,-4,19,1.1],[-10.8,-16,24,1.3],[10.7,-28,25,1.2],[-11.6,6,15,.7]])for(let i=0;i<count;i++){const a=random()*TAU,r=random()*radius,s=.10+random()*.26;const o=box(architecture,cx+Math.sin(a)*r,s*.35,cz+Math.cos(a)*r,s*1.9,s*.7,s,random()>.5?ashStone:obsidian);o.rotation.set(random()*.3,random()*TAU,random()*.3);}
  // A fallen sculpted head, half-buried shield and fractured column add sparse
  // close-up points of interest without occupying the line of combat.
  const fallen=group(architecture,9.1,.44,-13.0);fallen.rotation.set(.3,-.4,-.8);ball(fallen,0,0,0,.37,.47,.34,bone,18);ball(fallen,0,0,.30,.24,.27,.10,edge);box(fallen,0,.12,.40,.50,.08,.07,deep);beam(fallen,[0,.0,.40],[0,-.13,.43],.033,edge,5);for(const x of [-.18,.18])ball(fallen,x,.06,.39,.07,.025,.022,deep,10);
- const fallenColumn=cylinder(architecture,-9.8,.43,-21.1,.40,2.9,weathered,12);fallenColumn.rotation.set(.15,0,PI*.5);blockCollision(-9.8,-21.1,3.1,.85,'fallen column');
+ const fallenColumn=cylinder(architecture,-9.8,.43,-21.1,.40,2.9,weathered,12);fallenColumn.rotation.set(.15,0,PI*.5);solid(fallenColumn,'fallen column');solid(fallen,'fallen sculpture');
 
  // Trees and roots extend from the surrounding earth, not the stone floor.
  function tree(x,z,h=6,s=1){const q=group(architecture,x,-.3,z);q.scale.setScalar(s);curve(q,[[0,0,0],[.2,h*.3,0],[-.1,h*.65,.11],[.15,h,.05]],.16,wood,22,7);for(let i=0;i<5;i++){const a=i*2.45,yy=h*(.30+i*.11),length=1.0+i*.16;curve(q,[[.04,yy,0],[Math.cos(a)*length*.55,yy+.35,Math.sin(a)*length*.55],[Math.cos(a)*length,yy+1.3,Math.sin(a)*length]],.055,wood,9,5);}for(let i=0;i<5;i++){const a=i/5*TAU;curve(q,[[0,.18,0],[Math.sin(a)*.45,.02,Math.cos(a)*.45],[Math.sin(a)*1.1,-.02,Math.cos(a)*1.1]],.065,wood,7,5);}}
@@ -238,6 +239,7 @@ function create({THREE:T,scene,renderer,M,surfaces}){
    const band=ring(q,0,.48,0,.24,.028,bronze,32);band.rotation.x=PI/2;
    for(let i=0;i<5;i++){const a=i/5*TAU;beam(q,[Math.sin(a)*.24,.48,Math.cos(a)*.24],[Math.sin(a)*.24,.66+(i%2)*.05,Math.cos(a)*.24],.017,relicSilver,5);}
   }
+  solid(q,'reliquary');
   const ember=mat('#bba77d',.35,.3);ember.emissive.set('#e6ac51');ember.emissiveIntensity=.8;
   const spark=mesh(life,new T.IcosahedronGeometry(.055,1),ember,at.x,1.15,at.z,false);spark.name='memory-'+at.id;
   const traceMat=new T.MeshBasicMaterial({color:'#ceae73',transparent:true,opacity:.22,depthWrite:false,side:T.DoubleSide});materials.push(traceMat);

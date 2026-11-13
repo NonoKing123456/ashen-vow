@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const T=require('./vendor/three.min.js'),C=require('./feel.js');
 global.THREE=T;global.window=global;global.self=global;
-require('./vendor/GLTFLoader.js');require('./motion.js');require('./characters.js');
+require('./vendor/GLTFLoader.js');require('./locomotion.js');require('./rig-constraints.js');require('./motion.js');require('./characters.js');
 // Only image decoding is omitted in this Node fixture. The actual shipped GLB,
 // geometry, rig, animation clips, sockets and sword transforms are unchanged.
 T.TextureLoader.prototype.load=function(url,onLoad){const texture=new T.Texture();queueMicrotask(()=>onLoad(texture));return texture;};

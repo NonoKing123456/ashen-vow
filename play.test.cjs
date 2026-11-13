@@ -22,7 +22,7 @@ async function boot(options={}){
   AshenCharacters:{load:async()=>{},createKnight(){const root=new T.Group(),blade=new T.Group();root.add(blade);scene.add(root);return {root,weapon:{group:blade,base:new T.Vector3(0,0,.20),tip:new T.Vector3(0,0,2.05)},animate(o){blade.position.set(.12,1.05,0);let yaw=0;if(o.attack&&o.state==='attack'){const pose=ctx.AshenCombat.samplePose(o.attack,o.time);yaw=(pose.localStrike-.5)*1.0;this.weapon.tip.z=o.attack.reach;}blade.rotation.y=yaw;root.updateMatrixWorld(true);},setHit:noop};}}
  };
  ctx.location={hostname:'localhost'};ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);
- for(const file of ['feel.js','journey.js','tactics.js',...(options.cinematics?['director.js','impact.js']:[])])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8'),ctx);
+ for(const file of ['feel.js','navigation.js','journey.js','tactics.js',...(options.cinematics?['director.js','impact.js']:[])])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8'),ctx);
  const source=fs.readFileSync(path.join(__dirname,'game.js'),'utf8').replace(/\}\)\(\);\s*$/,'globalThis.qa={player,enemies,boss,level,camera,start,retry,frame,updatePlayer,damage,change,resolveHits,journey,updateContext,interact,selectRelic,get flags(){return {dead,won,bossDefeated,paused,checkpoint,gateOpen,locked,time,directing:!!director?.active};}};})();');
  await vm.runInContext(source,ctx);const q=ctx.qa;
  q.press=(code)=>listeners.keydown({code,repeat:false,preventDefault:noop});q.release=(code)=>listeners.keyup({code});q.tick=(n=1)=>{for(let i=0;i<n;i++){now+=1000/60;q.frame(now)}};
@@ -175,4 +175,17 @@ test('continuing, retrying and reduced-motion play bypass arrival direction',asy
  const q=await boot({cinematics:true});q.startPublic(true);assert.equal(q.flags.directing,false);
  q.startPublic(false);assert.equal(q.flags.directing,true);q.retry();assert.equal(q.flags.directing,false);
  const reduced=await boot({cinematics:true,settings:{shake:false}});reduced.startPublic();assert.equal(reduced.flags.directing,false);
+});
+
+
+test('a wall stops the actual player gait and does not drain sprint stamina at rest',async()=>{
+ const q=await boot();q.startPublic();q.level.obstacles.push({x:5,z:16,w:1,d:12.3,h:3.85});q.player.x=4;q.player.z=16;
+ q.press('KeyD');q.press('ShiftLeft');q.tick(180);q.release('KeyD');q.release('ShiftLeft');
+ assert.ok(q.player.x<=4.0401);assert.ok(q.player.speed<.001);assert.ok(q.player.visualVelocity.length()<.001);assert.ok(q.player.stamina>99);
+});
+
+test('a physical wall contact interrupts a sword strike before it can damage an enemy',async()=>{
+ const q=await boot();q.startPublic();const target=q.enemies[0];q.player.x=target.x;q.player.z=target.z+1.4;tap(q,'KeyJ');q.tick(2);
+ q.player.actor.blockedWeapon={point:{x:q.player.x,y:1.2,z:q.player.z-.4},normal:{x:0,y:0,z:1}};q.tick(1);
+ assert.equal(q.player.state,'hurt');assert.equal(target.hp,target.max);q.tick(12);assert.equal(target.hp,target.max);
 });

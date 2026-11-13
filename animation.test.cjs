@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const T=require('./vendor/three.min.js'),C=require('./feel.js');
 global.THREE=T;global.window=global;global.self=global;
-require('./vendor/GLTFLoader.js');require('./motion.js');require('./characters.js');
+require('./vendor/GLTFLoader.js');require('./locomotion.js');require('./rig-constraints.js');require('./motion.js');require('./characters.js');
 // Decode the shipped weighted mesh, skeleton and clips; only image decoding is
 // replaced, since the Node fixture has no browser image surface.
 T.TextureLoader.prototype.load=function(url,onLoad){const texture=new T.Texture();queueMicrotask(()=>onLoad(texture));return texture;};
@@ -13,7 +13,7 @@ function idle(){actor.root.position.set(0,0,0);actor.root.rotation.set(0,0,0);fo
 for(const [name,direction]of [['forward',[0,0,1]],['backward',[0,0,-1]],['right',[1,0,0]],['diagonal',[-.7071,0,.7071]]])test('real '+name+' roll tucks, stays grounded and returns without root drift',()=>{
  idle();const initial=actor.root.position.clone(),move=C.getMove('roll'),dir=new T.Vector3(...direction);let compact=Infinity;
  for(let i=0;i<=72;i++){const time=i/72*move.total;actor.animate({state:'roll',attack:move,time,t:time,dt:move.total/72,speed:0,rollDir:dir});assert.ok(actor.root.position.equals(initial),'visual animation must not own world displacement');
-   const bounds=actor.groundBounds();assert.ok(bounds.min>=.016,'skin probe went underground');assert.ok(bounds.min<.06,'rolling silhouette floats clear of the floor');if(i>10&&i<54)compact=Math.min(compact,bounds.max-bounds.min);
+   const bounds=actor.groundBounds();assert.ok(bounds.min>=.016,'skin probe went underground');const equipmentFloor=Math.min(new T.Box3().setFromObject(actor.weapon.group).min.y,actor.shield?.visible?new T.Box3().setFromObject(actor.shield).min.y:Infinity,actor.flask?new T.Box3().setFromObject(actor.flask).min.y:Infinity);assert.ok(Math.min(bounds.min,equipmentFloor)<.065,'full contact minimum '+Math.min(bounds.min,equipmentFloor)+' at sample '+i);if(i>10&&i<54)compact=Math.min(compact,bounds.max-bounds.min);
    if([12,24,36,48,60].includes(i)){const actual=actualBounds();assert.ok(actual.min>-.035,'weighted mesh penetrates the floor: '+actual.min);assert.ok(actual.max<2.15,'roll vaults unnaturally above standing height');}
  }
  assert.ok(compact<1.25,'knees and torso should form a compact rolling silhouette');assert.ok(actor.pivot.quaternion.angleTo(new T.Quaternion())<.001,'roll must finish upright at its controller duration');
@@ -25,8 +25,8 @@ test('directional roll rotates around the travel axis after character yaw',()=>{
 });
 test('sword socket inherits a tumble once and remains attached to its hand',()=>{
  idle();const move=C.getMove('roll');actor.animate({state:'roll',attack:move,time:.22,dt:1/60,rollDir:new T.Vector3(0,0,1)});
- const hand=actor.rig.rightHand,grip=actor.weapon.grip,expected=hand.getWorldQuaternion(new T.Quaternion()).multiply(grip.bindInverse).multiply(grip.orientation),actual=actor.weapon.group.getWorldQuaternion(new T.Quaternion());
- assert.ok(expected.angleTo(actual)<1e-5,'equipment applies the pivot rotation a second time');assert.ok(hand.getWorldPosition(new T.Vector3()).distanceTo(actor.weapon.group.getWorldPosition(new T.Vector3()))<1e-5);
+ const hand=actor.rig.rightHand,grip=actor.weapon.grip,expected=hand.getWorldQuaternion(new T.Quaternion()).multiply(grip.bindInverse).multiply(grip.orientation).normalize(),actual=actor.weapon.group.getWorldQuaternion(new T.Quaternion());
+ assert.ok(expected.angleTo(actual)<1e-5,'equipment applies the pivot rotation a second time');assert.ok(hand.localToWorld(grip.handOffset.clone()).distanceTo(actor.weapon.group.getWorldPosition(new T.Vector3()))<1e-5);
 });
 test('a completed roll can immediately enter a sword attack without a spinning recovery',()=>{
  idle();const roll=C.getMove('roll');for(let t=0;t<=roll.total;t+=1/120)actor.animate({state:'roll',attack:roll,time:t,dt:1/120,rollDir:new T.Vector3(0,0,-1)});

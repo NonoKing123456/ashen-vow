@@ -1,0 +1,348 @@
+{
+  "output": {
+    "path": "assets/knight-motion-v16.glb",
+    "sha256": "fd2f58b7139cf9f8e8d902001ea620352adb64106eba4ca9212eab0cf20d5c70",
+    "bytes": 1008732,
+    "clips": 23,
+    "duration": 1.4
+  },
+  "preserved_v15": {
+    "path": "assets/knight-motion-v15.glb",
+    "sha256": "4fc1dacf6dfbb67417002d18fa44d3aad72377de3518a80cbb0383835737d001",
+    "all_19_animation_objects_and_accessor_values_unchanged": true,
+    "node_rest_TRS_unchanged": true
+  },
+  "numerical": {
+    "all_values_finite": true,
+    "quaternion_norm_error": 1.1920928955078125e-7,
+    "fixed_joint_length_error_m": 4.309520141299039e-7,
+    "straight_horizontal_leg_frames_60Hz": {
+      "before": 14,
+      "after": 0
+    }
+  },
+  "raw_body": {
+    "minimum_y_m": -0.07301718819041428,
+    "minimum_helmet_y_m": 0.16266813375227354,
+    "frame_020_envelope": {
+      "time": 0.2,
+      "source_time": 0.256923076923077,
+      "knee_fold_weight": 1,
+      "weighted_min_y_m": 0.2542816902265971,
+      "weighted_max_y_m": 1.013036537385264,
+      "helmet_min_y_m": 0.5253126588473376,
+      "left_shoulder_min_y_m": 0.6377093730092209,
+      "head_y_m": 0.7068480387655717,
+      "hips_y_m": 0.7115192856463962,
+      "feet": {
+        "L": {
+          "min_y_m": 0.5337837829119509,
+          "centroid_x_m": -0.18931945013459114,
+          "centroid_z_m": -0.45955021702881244
+        },
+        "R": {
+          "min_y_m": 0.6305897904037268,
+          "centroid_x_m": -0.36049689455314426,
+          "centroid_z_m": -0.3390976687387112
+        }
+      }
+    },
+    "normal_runtime_body_ground_correction_still_required": true
+  },
+  "equipped": {
+    "sword": {
+      "minimum_y_m": 0.1803120134874989,
+      "frames_with_body_crossing": 0
+    },
+    "shield": {
+      "minimum_y_m": 0.10157171736125033,
+      "frames_with_body_crossing": 0
+    }
+  },
+  "root_motion": {
+    "duration": 1.4,
+    "displacement": [
+      0,
+      0,
+      3.3
+    ],
+    "horizontal_path_m": 3.3407839244160273,
+    "units": "production-world meters; authored phase trajectory",
+    "recovery_support_start": 0.8,
+    "recovery_method": "left support-foot centroid held in XZ by measured source-relative translation; 3.3m forward endpoint"
+  },
+  "native_curve_left_support_centroid_range_m": {
+    "x": 0,
+    "z": 0.007427327584381693
+  },
+  "limits": [
+    "Raw original cape is not solved by the animation-only asset; runtime cloth contact remains required.",
+    "Raw weighted body reaches -7.3cm at seat/foot support and needs normal weighted-body grounding.",
+    "Offline sampled triangle checks are not universal intersection or visual acceptance.",
+    "Lateral sources are Y-turning shoulder-roll derivatives, not native Z-axis side flips. They turn quickly only during measured free-foot support release."
+  ],
+  "status": "Frozen source asset; integrated production acceptance recorded separately in tools/acceptance-v16.json",
+  "build": {
+    "command": "blender --background --python tools/retarget-knight.py -- --knight-roll --audit",
+    "inputs": [
+      "tools/retarget-knight.py",
+      "tools/export-equipment-binding.cjs",
+      "assets/knight-v11.glb",
+      "assets/knight-motion-v15.glb",
+      "characters.js",
+      "vendor/three.min.js",
+      "vendor/GLTFLoader.js"
+    ],
+    "fresh_production_geometry_rebuild": {
+      "output_sha256": "52589a9350d3cfbedbea8769608e6946d04d1a8f741c2867679228ac836b6879",
+      "rebuild_sha256": "52589a9350d3cfbedbea8769608e6946d04d1a8f741c2867679228ac836b6879",
+      "byte_identical": true,
+      "bytes": 879164
+    },
+    "directional_command": "blender --background --python tools/derive-knight-rolls.py -- --output assets/knight-motion-v16.glb --audit",
+    "directional_rebuild": {
+      "source": "the byte-identical 20-clip forward rebuild recorded above",
+      "byte_identical": true,
+      "sha256": "fd2f58b7139cf9f8e8d902001ea620352adb64106eba4ca9212eab0cf20d5c70",
+      "bytes": 1008732
+    }
+  },
+  "sampled_self_contact": [
+    {
+      "time": 0.12,
+      "foot_L_through_torso": 0,
+      "foot_R_through_torso": 0
+    },
+    {
+      "time": 0.2,
+      "foot_L_through_torso": 0,
+      "foot_R_through_torso": 0
+    },
+    {
+      "time": 0.3,
+      "foot_L_through_torso": 0,
+      "foot_R_through_torso": 0
+    },
+    {
+      "time": 0.4,
+      "foot_L_through_torso": 0,
+      "foot_R_through_torso": 0
+    },
+    {
+      "time": 0.5,
+      "foot_L_through_torso": 0,
+      "foot_R_through_torso": 0
+    },
+    {
+      "time": 0.6,
+      "foot_L_through_torso": 0,
+      "foot_R_through_torso": 0
+    },
+    {
+      "time": 0.7,
+      "foot_L_through_torso": 0,
+      "foot_R_through_torso": 0
+    },
+    {
+      "time": 0.8,
+      "foot_L_through_torso": 0,
+      "foot_R_through_torso": 0
+    }
+  ],
+  "authoring": {
+    "changed": "pelvis bank and launch height, source-phase mapping, bilateral hip/knee/ankle chains, neck/head tuck, six equipped arm channels, root trajectory",
+    "preserved": "all original v15 clip data and rest transforms; source spine local rotation curves; fixed bone lengths",
+    "not_claimed": "independent side/back rolls, arbitrary-terrain collision proof or final motion style acceptance"
+  },
+  "tracked_tool_sha256": {
+    "tools/retarget-knight.py": "eb31b1c73558f5decd31c5baa43460e8437c6e628dbdbcbee3a6b8f50cc77530",
+    "tools/export-equipment-binding.cjs": "f57e23818cf38e155abca051cc6b30d43fbda45ce5b3769ae171296fb73d6f43",
+    "tools/derive-knight-rolls.py": "d776dbb7d91980282023def5e1101db47c417b1a6c3e769e5da32aac0868a226"
+  },
+  "measurement_definitions": {
+    "straight_horizontal_leg_frame": "60Hz: abs(normalize(chest-pelvis).y)<0.55 and dot(normalized thigh-to-knee,knee-to-ankle)>0.85 for both legs",
+    "helmet_region": "actual skinned vertices whose dominant influence is head; neck-weighted collar is not included",
+    "left_shoulder_region": "actual skinned vertices whose dominant influence is clavicle_L",
+    "support_foot_centroid": "mean actual skinned positions dominated by foot_L or toe_L, not a guarantee that every sole point is stationary"
+  },
+  "directional_derivatives": {
+    "output": {
+      "path": "assets/knight-motion-v16.glb",
+      "sha256": "fd2f58b7139cf9f8e8d902001ea620352adb64106eba4ca9212eab0cf20d5c70",
+      "bytes": 1008732,
+      "clips": 23
+    },
+    "all_19_original_clips_unchanged": true,
+    "forward_channels_and_values_unchanged": true,
+    "node_rest_TRS_unchanged": true,
+    "clips": {
+      "Knight_Roll": {
+        "root_motion": {
+          "duration": 1.4,
+          "displacement": [
+            0,
+            0,
+            3.3
+          ],
+          "horizontal_path_m": 3.3407839244160273,
+          "units": "production-world meters; authored phase trajectory",
+          "recovery_support_start": 0.8,
+          "recovery_method": "left support-foot centroid held in XZ by measured source-relative translation; 3.3m forward endpoint",
+          "free_turn_window": [
+            0.18333333333333332,
+            0.6
+          ],
+          "support_foot": "L",
+          "free_turn_measurement": "Both weighted boot minima after normal negative-body-min grounding exceed 8cm; longest interval inset 2 frames at each end"
+        },
+        "weighted_body_min_y_m": -0.07301718049796889,
+        "helmet_min_y_m": 0.16266796051746474,
+        "support_centroid_range_m": [
+          1.7554332454317034e-7,
+          0.007427108543494043
+        ],
+        "equipment": "forward immutable source audit retained"
+      },
+      "Knight_Roll_Back": {
+        "root_motion": {
+          "duration": 1.4,
+          "displacement": [
+            -0.0010900022462010384,
+            0,
+            -3.3086555004119873
+          ],
+          "horizontal_path_m": 3.450574061594313,
+          "units": "production-world meters; native trajectory, no path normalization",
+          "recovery_support_start": 0.8,
+          "free_turn_window": [
+            0.36666666666666664,
+            0.6666666666666666
+          ],
+          "support_foot": "L",
+          "free_turn_measurement": "Both weighted boot minima after normal negative-body-min grounding exceed 8cm; longest interval inset 2 frames at each end",
+          "recovery_method": "measured left foot/toe dominant centroid held in native XZ; no authored Y lift"
+        },
+        "weighted_body_min_y_m": -0.12480441625738382,
+        "helmet_min_y_m": 0.1632923356185542,
+        "support_centroid_range_m": [
+          1.2311367758588432e-9,
+          2.318632104092444e-7
+        ],
+        "equipment": {
+          "sword": {
+            "min_y_m": 0.18020083018420405,
+            "body_crossing_frames": 0
+          },
+          "shield": {
+            "min_y_m": 0.105943993722781,
+            "body_crossing_frames": 0
+          }
+        }
+      },
+      "Knight_Roll_Left": {
+        "root_motion": {
+          "duration": 1.4,
+          "displacement": [
+            3.299999952316284,
+            0,
+            3.5762786865234375e-7
+          ],
+          "horizontal_path_m": 3.6685624808628776,
+          "units": "production-world meters; native trajectory, no path normalization",
+          "recovery_support_start": 0.8,
+          "free_turn_window": [
+            0.18333333333333332,
+            0.6
+          ],
+          "support_foot": "L",
+          "free_turn_measurement": "Both weighted boot minima after normal negative-body-min grounding exceed 8cm; longest interval inset 2 frames at each end",
+          "recovery_method": "measured left foot/toe dominant centroid held in native XZ; no authored Y lift"
+        },
+        "weighted_body_min_y_m": -0.07301717466120822,
+        "helmet_min_y_m": 0.16266804582908548,
+        "support_centroid_range_m": [
+          2.2779799069283513e-7,
+          7.828360626405129e-9
+        ],
+        "equipment": {
+          "sword": {
+            "min_y_m": 0.18031189454019414,
+            "body_crossing_frames": 0
+          },
+          "shield": {
+            "min_y_m": 0.10157175165139258,
+            "body_crossing_frames": 0
+          }
+        },
+        "max_raw_body_y_envelope_error_vs_forward_m": 2.927181098136278e-7
+      },
+      "Knight_Roll_Right": {
+        "root_motion": {
+          "duration": 1.4,
+          "displacement": [
+            -3.299999713897705,
+            0,
+            0
+          ],
+          "horizontal_path_m": 3.6584931851160847,
+          "units": "production-world meters; native trajectory, no path normalization",
+          "recovery_support_start": 0.8,
+          "free_turn_window": [
+            0.18333333333333332,
+            0.6
+          ],
+          "support_foot": "L",
+          "free_turn_measurement": "Both weighted boot minima after normal negative-body-min grounding exceed 8cm; longest interval inset 2 frames at each end",
+          "recovery_method": "measured left foot/toe dominant centroid held in native XZ; no authored Y lift"
+        },
+        "weighted_body_min_y_m": -0.07301717466120822,
+        "helmet_min_y_m": 0.16266796015116353,
+        "support_centroid_range_m": [
+          2.2779799069283513e-7,
+          7.828360626405129e-9
+        ],
+        "equipment": {
+          "sword": {
+            "min_y_m": 0.18031204220171637,
+            "body_crossing_frames": 0
+          },
+          "shield": {
+            "min_y_m": 0.10157175165139258,
+            "body_crossing_frames": 0
+          }
+        },
+        "max_raw_body_y_envelope_error_vs_forward_m": 3.7109624093090154e-7
+      }
+    }
+  },
+  "back_landing_connection": {
+    "old_asset_sha256": "d70ce7e7bbbec399365b300d56eb3c3ffc45b1e5e206d00793638434442a433c",
+    "changed_60Hz_sample_times": [
+      0.6666666865348816,
+      0.6833333373069763,
+      0.699999988079071,
+      0.7166666388511658,
+      0.7333333492279053,
+      0.75,
+      0.7666666507720947,
+      0.7833333611488342
+    ],
+    "method": "direct .65s tuck pose to original .80s crouch, with existing palm/gear adaptation limited to the connecting 8 samples",
+    "other_22_clips_and_accessor_values_unchanged": true,
+    "back_native_root_samples_unchanged": true,
+    "back_all_channel_values_before_065_and_from_080_unchanged": true,
+    "geometry_review_interval": [
+      0.6,
+      0.8
+    ],
+    "geometry_review_Hz": 120,
+    "equipment_body_crossing_frames": {
+      "sword": 0,
+      "shield": 0
+    },
+    "self_contact": "10 sampled connection poses: both boot-to-torso triangle crossing counts zero",
+    "visual_preflight": ".asset-work/roll-v16/knight-v16-back-landing-side.png",
+    "production_visual_acceptance": "Production review completed; see tools/acceptance-v16.json for scope and limits"
+  },
+  "production_acceptance": "tools/acceptance-v16.json"
+}

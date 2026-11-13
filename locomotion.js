@@ -7,6 +7,13 @@ const wrap=x=>((x%1)+1)%1;
 const smooth=x=>{x=clamp(x);return x*x*(3-2*x)};
 const lerp=(a,b,t)=>a+(b-a)*t;
 const difference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
+const SPEEDS=Object.freeze({walk:1.85,run:4.4,guard:1.05,side:1.1,back:1.15});
+function movement(localX,localZ,{guarding=false,sprint=false}={}){
+ const length=Math.hypot(localX,localZ);if(length<.0001)return {speed:0,sprinting:false};
+ const x=localX/length,z=localZ/length;if(guarding)return {speed:SPEEDS.guard,sprinting:false};
+ if(sprint&&z>.75)return {speed:SPEEDS.run,sprinting:true};
+ return {speed:1/Math.hypot(x/SPEEDS.side,z/(z>=0?SPEEDS.walk:SPEEDS.back)),sprinting:false};
+}
 function curveAt(profile,side,phase){
  const curve=profile.feet[side],at=wrap(phase)*curve.length,i=Math.floor(at),u=at-i;
  const a=curve[i],b=curve[(i+1)%curve.length];
@@ -38,11 +45,13 @@ function calibrate(actor,T){
   for(const side of ['left','right']){const ids=new Set();for(const bins of sets[side].values())for(const b of bins)ids.add(b.index);if(ids.size)probes.push({mesh,side,indices:[...ids]});}
  });
  const point=new T.Vector3(),mixer=new T.AnimationMixer(model),samples=128,profiles={};
- for(const key of ['walk','run']){
-  const clip=actor.clips.find(c=>new RegExp('^'+key+'$','i').test(c.name))||actor.clips.find(c=>new RegExp(key,'i').test(c.name));
+ const definitions=[['walk','Walk',0,1],['run','Run',0,1],['strafeLeft','Knight_Strafe_Left',1,0],['strafeRight','Knight_Strafe_Right',-1,0],['back','Knight_Backward',0,-1]];
+ for(const [key,name,dx,dz]of definitions){
+  const clip=actor.clips.find(c=>c.name.toLowerCase()===name.toLowerCase());
   if(!clip)continue;
   mixer.stopAllAction();const action=mixer.clipAction(clip);action.reset().setEffectiveWeight(1).play();
-  const profile={name:clip.name,duration:clip.duration,distance:actor.gait?.[key]?.distance||(key==='walk'?3:5),feet:{left:[],right:[]},ranges:{}};
+  const metadata=clip.userData?.locomotion||{},rootMotion=clip.userData?.root_motion;
+  const profile={name:clip.name,duration:clip.duration,distance:metadata.stride_distance_m||rootMotion?.horizontal_path_m||actor.gait?.[key]?.distance||(key==='walk'?3:5),direction:{x:dx,z:dz},feet:{left:[],right:[]},ranges:{}};
   for(let i=0;i<samples;i++){
    mixer.setTime(i/samples*clip.duration);holder.updateMatrixWorld(true);for(const p of probes)p.mesh.skeleton.update();
    for(const side of ['left','right']){
@@ -69,7 +78,7 @@ function calibrate(actor,T){
     const before=values[(i+values.length-1)%values.length],after=values[(i+1)%values.length],v=values[i];
     v.velocityX=(after.x-before.x)*samples/(2*profile.duration);
     v.velocityZ=(after.z-before.z)*samples/(2*profile.duration);
-    const residual=Math.hypot(v.velocityX,v.velocityZ+native)/Math.max(.1,native);
+    const residual=Math.hypot(v.velocityX+native*dx,v.velocityZ+native*dz)/Math.max(.1,native);
     v.support=v.contact*(1-smooth((residual-.10)/.28));
    }
   }
@@ -78,7 +87,7 @@ function calibrate(actor,T){
    let re=0,im=0;for(let i=0;i<samples;i++){const z=profile.feet.left[i].z;re+=z*Math.cos(TAU*frequency*i/samples);im+=z*Math.sin(TAU*frequency*i/samples);}
    if(re*re+im*im>power){power=re*re+im*im;dominant=frequency;}
   }
-  profile.cycles=dominant;
+  profile.cycles=metadata.cycles||dominant;
   profiles[key]=profile;
  }
  mixer.stopAllAction();mixer.uncacheRoot(model);
@@ -95,14 +104,28 @@ function calibrate(actor,T){
   }
   if(cost<bestCost){bestCost=cost;bestOffset=offset/samples;}
  }
- const data={walk:profiles.walk,run:profiles.run,runOffset:bestOffset,samples,alignmentCost:bestCost};cache.set(actor.clips,data);return data;
+ // Match landing phase before blending directions. A lateral clip has one
+ // full step-together cycle; the original walk contains two stride cycles.
+ for(const key of ['strafeLeft','strafeRight','back'])if(profiles[key]){
+  const profile=profiles[key];let best=0,cost=Infinity;
+  for(let offset=0;offset<samples;offset++){let current=0;for(let i=0;i<samples;i++)for(const side of ['left','right']){const a=curveAt(profiles.walk,side,i/samples/profiles.walk.cycles),b=curveAt(profile,side,i/samples/profile.cycles+offset/samples);current+=(a.contact-b.contact)**2;}if(current<cost){best=offset/samples;cost=current;}}
+  profile.offset=best;
+ }
+ const data={...profiles,runOffset:bestOffset,samples,alignmentCost:bestCost,directionalReady:!!(profiles.strafeLeft&&profiles.strafeRight&&profiles.back)};cache.set(actor.clips,data);return data;
 }
 function create(actor,T){
  const data=calibrate(actor,T),local=new T.Vector3(),q=new T.Quaternion();
- let phase=0,runWeight=0,directionYaw=0,clock=0,wasMoving=false,reverse=false,previousTravelYaw=null,directionAge=0,previous={left:0,right:0},lastStep={left:-10,right:-10},lastFootfall=-10,lastSide=null;
+ let phase=0,runWeight=0,moveWeight=0,directionYaw=0,clock=0,wasMoving=false,reverse=false,previousTravelYaw=null,directionAge=0,previous={left:0,right:0},lastStep={left:-10,right:-10},lastFootfall=-10,lastSide=null;
+ const directionWeights={forward:1,strafeLeft:0,strafeRight:0,back:0};
+ let lastAction=null;
  function update(o={}){
   const dt=clamp(o.dt,0,.05),speed=Math.max(0,Number(o.speed)||0),scale=Math.max(.1,actor.root.scale.x||1),moving=o.enabled!==false&&speed>.07;
   clock+=dt;local.set(Number(o.moveX)||0,0,Number(o.moveZ)||0);actor.root.getWorldQuaternion(q);local.applyQuaternion(q.invert());
+  const actionLandings=[],action=o.action;
+  if(action){
+   const meta=actor.clips.find(c=>c.name===action.clip)?.userData?.root_motion,support=meta?.recovery_support_start,at=Math.max(0,Number(action.time)||0),restarted=!lastAction||lastAction.clip!==action.clip||at<lastAction.time-.001;
+   if(dt>0){if(Number.isFinite(support)&&at>=support&&(restarted||lastAction.time<support))actionLandings.push({clip:action.clip,nativeTime:support,side:meta.recovery_support_side||'left'});lastAction={clip:action.clip,time:at};}
+  }else lastAction=null;
   const hasDirection=local.lengthSq()>.001,oldReverse=reverse;
   if(moving&&hasDirection)reverse=local.z<-.12&&-local.z>Math.abs(local.x)*(reverse?.50:.80);
   const travelYaw=moving&&hasDirection?Math.atan2(local.x,local.z):null;
@@ -113,20 +136,27 @@ function create(actor,T){
   const walkNative=data.walk.distance/data.walk.duration*scale,runNative=data.run.distance/data.run.duration*scale;
   const target=moving?smooth((speed-walkNative)/Math.max(.1,runNative-walkNative)):0;
   runWeight+=(target-runWeight)*(1-Math.exp(-10*dt));
-  const distance=lerp(data.walk.distance,data.run.distance,runWeight)*scale;
-  if(moving)phase=wrap(phase+(reverse?-1:1)*speed*dt/Math.max(.25,distance));
+  moveWeight+=((moving?1:0)-moveWeight)*(1-Math.exp(-(moving?14:10)*dt));
+  // Opposing step-together clips are half a cycle apart. Allow the pose to
+  // transfer weight before adopting the new leading leg on an abrupt reversal.
+  if(data.directionalReady&&moving&&hasDirection){const forwardStride=lerp(data.walk.distance/data.walk.cycles,data.run.distance/data.run.cycles,runWeight),wanted={forward:Math.max(0,local.z)/forwardStride,back:Math.max(0,-local.z)/(data.back.distance/data.back.cycles),strafeLeft:Math.max(0,local.x)/(data.strafeLeft.distance/data.strafeLeft.cycles),strafeRight:Math.max(0,-local.x)/(data.strafeRight.distance/data.strafeRight.cycles)},total=Object.values(wanted).reduce((a,b)=>a+b,0);for(const key of Object.keys(directionWeights))directionWeights[key]+=(wanted[key]/total-directionWeights[key])*(1-Math.exp(-8*dt));}
+  const blends=[{profile:data.walk,weight:directionWeights.forward*(1-runWeight),factor:1,offset:0},{profile:data.run,weight:directionWeights.forward*runWeight,factor:1,offset:data.runOffset}];
+  if(data.directionalReady)for(const key of ['strafeLeft','strafeRight','back'])blends.push({profile:data[key],weight:directionWeights[key],factor:data.walk.cycles/data[key].cycles,offset:data[key].offset});
+  const travel=blends.reduce((sum,b)=>{const d=b.profile.distance*b.factor*b.weight;sum.x+=d*b.profile.direction.x;sum.z+=d*b.profile.direction.z;sum.length+=d;return sum;},{x:0,z:0,length:0}),distance=(data.directionalReady?Math.max(Math.hypot(travel.x,travel.z),travel.length*.5):travel.length)*scale,phaseSign=!data.directionalReady&&reverse?-1:1;
+  if(moving)phase=wrap(phase+phaseSign*speed*dt/Math.max(.25,distance));
   const runPhase=wrap(phase+data.runOffset),contacts={},feet={},footfalls=[];
   const cycles=lerp(data.walk.cycles,data.run.cycles,runWeight),stepInterval=distance/Math.max(.1,speed*cycles*2),minimumGap=Math.min(.24,stepInterval*.45);
   for(const side of ['left','right']){
-   const walk=curveAt(data.walk,side,phase),run=curveAt(data.run,side,runPhase);
-   contacts[side]=moving?lerp(walk.contact,run.contact,runWeight):0;
-   const support=moving?lerp(walk.support,run.support,runWeight):0,rate=moving?(reverse?-1:1)*speed/distance*scale:0;
+   const values=blends.map(b=>({...b,sample:curveAt(b.profile,side,phase*b.factor+b.offset)})),value=key=>values.reduce((sum,b)=>sum+b.sample[key]*b.weight,0);
+   contacts[side]=moving?clamp(value('contact')):0;
+   const support=moving?clamp(value('support')):0,rate=moving?phaseSign*speed/distance*scale:0;
    // Positions and velocities use character-facing axes but world-meter units
    // (including root scale), before any directional leg-plane constraint.
-   const sourceVelocity=moving?{x:lerp(walk.velocityX*data.walk.duration,run.velocityX*data.run.duration,runWeight)*rate,z:lerp(walk.velocityZ*data.walk.duration,run.velocityZ*data.run.duration,runWeight)*rate}:{x:0,z:0};
-   const residual=Math.hypot(sourceVelocity.x,sourceVelocity.z+(reverse?-speed:speed)),tolerance=Math.min(.35*scale,.12*scale+speed*.075);
+   const sourceVelocity=moving?{x:values.reduce((sum,b)=>sum+b.sample.velocityX*b.profile.duration*b.factor*b.weight,0)*rate,z:values.reduce((sum,b)=>sum+b.sample.velocityZ*b.profile.duration*b.factor*b.weight,0)*rate}:{x:0,z:0};
+   const length=Math.max(.0001,Math.hypot(local.x,local.z)),velocity=data.directionalReady&&hasDirection?{x:local.x/length*speed,z:local.z/length*speed}:{x:0,z:reverse?-speed:speed};
+   const residual=Math.hypot(sourceVelocity.x+velocity.x,sourceVelocity.z+velocity.z),tolerance=Math.min(.35*scale,.12*scale+speed*.075);
    feet[side]={contact:contacts[side],support,lockedCandidate:moving&&directionAge>=.10&&contacts[side]>.75&&support>.65&&residual<=tolerance,
-    sourcePosition:{x:lerp(walk.x,run.x,runWeight)*scale,z:lerp(walk.z,run.z,runWeight)*scale},
+    sourcePosition:{x:value('x')*scale,z:value('z')*scale},
     sourceVelocity};
    if(moving&&wasMoving&&contacts[side]>.58&&previous[side]<=.58&&clock-lastStep[side]>.16&&clock-lastFootfall>minimumGap&&(lastSide!==side||clock-lastFootfall>stepInterval*1.8)){
     lastStep[side]=lastFootfall=clock;lastSide=side;footfalls.push({side,strength:lerp(.58,1,runWeight),phase});
@@ -134,10 +164,11 @@ function create(actor,T){
    previous[side]=contacts[side];
   }
   wasMoving=moving;
-  return {active:moving,phase,walkPhase:phase,runPhase,walkTime:phase*data.walk.duration,runTime:runPhase*data.run.duration,walkWeight:1-runWeight,runWeight,directionYaw,reverse,contacts,feet,footfalls,walkNative,runNative,strideDistance:distance};
+  const layers=blends.filter(b=>b.weight>.00001).map(b=>({name:b.profile.name,time:wrap(phase*b.factor+b.offset)*b.profile.duration,weight:b.weight}));
+  return {active:moving,phase,walkPhase:phase,runPhase,walkTime:phase*data.walk.duration,runTime:runPhase*data.run.duration,walkWeight:1-runWeight,runWeight:runWeight*directionWeights.forward,directionYaw,reverse,contacts,feet,footfalls,actionLandings,walkNative,runNative,strideDistance:distance,stepCycleDuration:distance/Math.max(.1,speed*data.walk.cycles),directional:data.directionalReady,layers,moveWeight};
  }
- return {update,calibration:data,reset(){wasMoving=false;reverse=false;previousTravelYaw=null;directionAge=0;previous={left:0,right:0};lastStep={left:-10,right:-10};lastFootfall=-10;lastSide=null;}};
+ return {update,calibration:data,reset(){wasMoving=false;reverse=false;previousTravelYaw=null;directionAge=0;previous={left:0,right:0};lastStep={left:-10,right:-10};lastFootfall=-10;lastSide=null;lastAction=null;}};
 }
-global.AshenLocomotion={create,calibrate};
+global.AshenLocomotion={create,calibrate,movement,SPEEDS};
 if(typeof module!=='undefined'&&module.exports)module.exports=global.AshenLocomotion;
 })(typeof window!=='undefined'?window:globalThis);

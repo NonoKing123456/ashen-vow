@@ -3,3 +3,4 @@ node_modules/
 Thumbs.db
 ONLINE_DELIVERY.json
 .asset-work/
+__pycache__/

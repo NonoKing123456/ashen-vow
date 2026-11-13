@@ -1,0 +1,188 @@
+{
+  "status": "Frozen source asset; integrated production acceptance recorded separately in tools/acceptance-v16.json",
+  "output": {
+    "path": "assets/knight-footwork-v16.glb",
+    "sha256": "2ee9f8c5841a0b132e33dd3d4b3d7a5c4478418f670221d48b353a860b35b2a3",
+    "bytes": 111580,
+    "bones": 22,
+    "clips": 3
+  },
+  "rebuild_command": "node tools/bake-armed-footwork.cjs --no-preview",
+  "audit_command": "node tools/audit-armed-footwork.cjs",
+  "preview_commands": [
+    "node tools/bake-armed-footwork.cjs",
+    "blender --background --python tools/render-footwork-preview.py"
+  ],
+  "inputs": {
+    "assets/knight-v11.glb": "63d99f37f4fe002bf7093cd3ea1561e9bcc718862629afbdcaf3566e291d88d4",
+    "assets/knight-motion-v15.glb": "4fc1dacf6dfbb67417002d18fa44d3aad72377de3518a80cbb0383835737d001"
+  },
+  "tool_lf_normalized_sha256": {
+    "tools/bake-armed-footwork.cjs": "06da85377e52f5d53c79afb13aee53edb2eea145755f6a5b3f3287a03bd69f40",
+    "tools/audit-armed-footwork.cjs": "e9d6c088bb97cef5677754d34ced2eb9baa3461301485710d2d167550fcb8866",
+    "tools/render-footwork-preview.py": "86f28a3662eb28c1c5690bbde75326014bf2d354e467d043edfd7bc0e6d0d6a9"
+  },
+  "method": "Authored step-and-follow side foot targets and alternating backward foot targets; fixed-length two-bone leg IK baked offline over a common armed carry. Not motion capture and not a runtime direction-yaw override.",
+  "root_convention": "root_motion is production world meters at root.scale=1. Bone node TRS stays in the original target GLTF units; no second model-normalization factor belongs on root displacement.",
+  "loop_contract": "All 22 local rotations and pelvis translation return to the first pose at the end. Root trajectory accumulates one stride; cycles=1. Stance target world velocity cancels the linear root displacement.",
+  "source_sampling_fps": 60,
+  "audit_phase_samples": 121,
+  "clip_summaries": [
+    {
+      "name": "Knight_Strafe_Left",
+      "locomotion": {
+        "direction": [
+          1,
+          0,
+          0
+        ],
+        "cycles": 1,
+        "stride_distance_m": 0.8,
+        "nominal_speed_mps": 0.6666666666666667,
+        "contact_windows": {
+          "left": [
+            [
+              0.44,
+              1
+            ]
+          ],
+          "right": [
+            [
+              0,
+              0.5
+            ],
+            [
+              0.94,
+              1
+            ]
+          ]
+        },
+        "contact_window_units": "normalized phase in [0,1]",
+        "swing_lift_m": 0.055,
+        "production_model_normalization": 1.0432432297984557,
+        "leg_length_fixed": true
+      },
+      "root_units": "production world meters at actor root.scale=1; pose translations retain original GLTF node units",
+      "minimum_weighted_sole_m": 0.01791410071847864,
+      "minimum_weighted_foot_midline_clearance_m": 0.021166427421129563,
+      "maximum_support_ankle_world_velocity_mps_at_native_speed": 0.008451476854545316,
+      "maximum_bone_local_offset_length_error_m": 0,
+      "maximum_loop_position_error_m": 7.577759026866857e-11,
+      "maximum_loop_quaternion_error_rad": 4.2146848510894035e-8,
+      "source_hips_drop_m": 0.13,
+      "additional_reach_crouch_max_m": 0,
+      "limited_keyframe_blade_shield_body_crossings": 0
+    },
+    {
+      "name": "Knight_Strafe_Right",
+      "locomotion": {
+        "direction": [
+          -1,
+          0,
+          0
+        ],
+        "cycles": 1,
+        "stride_distance_m": 0.8,
+        "nominal_speed_mps": 0.6666666666666667,
+        "contact_windows": {
+          "left": [
+            [
+              0,
+              0.5
+            ],
+            [
+              0.94,
+              1
+            ]
+          ],
+          "right": [
+            [
+              0.44,
+              1
+            ]
+          ]
+        },
+        "contact_window_units": "normalized phase in [0,1]",
+        "swing_lift_m": 0.055,
+        "production_model_normalization": 1.0432432297984557,
+        "leg_length_fixed": true
+      },
+      "root_units": "production world meters at actor root.scale=1; pose translations retain original GLTF node units",
+      "minimum_weighted_sole_m": 0.017864865961865244,
+      "minimum_weighted_foot_midline_clearance_m": 0.038494223376043475,
+      "maximum_support_ankle_world_velocity_mps_at_native_speed": 0.011327814379190596,
+      "maximum_bone_local_offset_length_error_m": 0,
+      "maximum_loop_position_error_m": 7.577759026866857e-11,
+      "maximum_loop_quaternion_error_rad": 4.2146848510894035e-8,
+      "source_hips_drop_m": 0.13,
+      "additional_reach_crouch_max_m": 0.013630599439622082,
+      "limited_keyframe_blade_shield_body_crossings": 0
+    },
+    {
+      "name": "Knight_Backward",
+      "locomotion": {
+        "direction": [
+          0,
+          0,
+          -1
+        ],
+        "cycles": 1,
+        "stride_distance_m": 1.05,
+        "nominal_speed_mps": 0.8750000000000001,
+        "contact_windows": {
+          "left": [
+            [
+              0.44,
+              1
+            ]
+          ],
+          "right": [
+            [
+              0,
+              0.5
+            ],
+            [
+              0.94,
+              1
+            ]
+          ]
+        },
+        "contact_window_units": "normalized phase in [0,1]",
+        "swing_lift_m": 0.065,
+        "production_model_normalization": 1.0432432297984557,
+        "leg_length_fixed": true
+      },
+      "root_units": "production world meters at actor root.scale=1; pose translations retain original GLTF node units",
+      "minimum_weighted_sole_m": 0.017935346634723362,
+      "minimum_weighted_foot_midline_clearance_m": 0.0689658190121058,
+      "maximum_support_ankle_world_velocity_mps_at_native_speed": 0.00611413333842766,
+      "maximum_bone_local_offset_length_error_m": 0,
+      "maximum_loop_position_error_m": 9.282282536951508e-11,
+      "maximum_loop_quaternion_error_rad": 4.2146848510894035e-8,
+      "source_hips_drop_m": 0.055,
+      "additional_reach_crouch_max_m": 0,
+      "limited_keyframe_blade_shield_body_crossings": 0
+    }
+  ],
+  "limits": [
+    "Side step opens into a wide stance before the trailing foot follows; this must be judged at production 1.1m/s, not the previous 1.65m/s.",
+    "Foot world support residual describes the decoded source at native speed, including keyframe interpolation; it is not a guarantee of arbitrary diagonal blending.",
+    "Limited body-crossing checks used blade centre axis and sampled shield back-thickness rays against production weighted triangles at six phases per clip; they are not a full equipment or cloth volume proof.",
+    "Preview applies production carries/ground/equipmentFloor/cloth for equipment clearance, while the asset itself contains raw common-carry arm poses. Runtime must retain its shared calibration.",
+    "Runtime control handoff, corners, gait phase mixing, rapid reversal and real-level accessibility remain release acceptance work."
+  ],
+  "isolated_rebuild_without_prior_footwork_asset": {
+    "passed": true,
+    "sha256": "2ee9f8c5841a0b132e33dd3d4b3d7a5c4478418f670221d48b353a860b35b2a3",
+    "inputs": [
+      "tools/bake-armed-footwork.cjs",
+      "characters.js",
+      "rig-constraints.js",
+      "vendor/three.min.js",
+      "vendor/GLTFLoader.js",
+      "assets/knight-v11.glb",
+      "assets/knight-motion-v15.glb"
+    ]
+  },
+  "production_acceptance": "tools/acceptance-v16.json"
+}

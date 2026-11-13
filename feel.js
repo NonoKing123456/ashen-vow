@@ -16,7 +16,7 @@ const HEAVY={id:'heavy',kind:'heavy',index:0,pose:'charged-cleave',windup:.48,ac
 const CRITICAL={id:'critical',kind:'critical',type:'cleave',index:0,pose:'riposte-cleave',windup:.38,active:.13,followThrough:.32,recovery:.703333,stamina:28,damage:100,poise:0,reach:2.65,lunge:.48,hitstop:.14,cancelAt:1.54,guardAt:1.54,chainOpen:Infinity,chainClose:Infinity};
 // A direct counter starts from the common carry, with its source recovery.
 const DODGE_ATTACK={id:'dodge-cut',kind:'dodgeAttack',type:'cut',index:0,pose:'diagonal-right',windup:.20,active:.11,followThrough:.123333,recovery:.72,stamina:19,damage:32,poise:34,reach:2.30,lunge:.60,hitstop:.062,cancelAt:.68,guardAt:.72,chainOpen:.54,chainClose:1.12,twist:-.70,slash:1};
-const ROLL={id:'roll',kind:'roll',index:0,pose:'turn-and-forward-roll',windup:.20,active:.58,followThrough:.25,recovery:.436667,stamina:25,damage:0,poise:0,reach:0,lunge:3.3,hitstop:0,cancelAt:1.466667,guardAt:1.466667,chainOpen:1.466667,chainClose:1.466667,iframeStart:.22,iframeEnd:.73};
+const ROLL={id:'roll',kind:'roll',index:0,pose:'compact-shoulder-roll',windup:.20,active:.53,followThrough:.22,recovery:.45,stamina:25,damage:0,poise:0,reach:0,lunge:3.3,nativeRootMotion:true,hitstop:0,cancelAt:1.4,guardAt:1.4,chainOpen:1.4,chainClose:1.4,iframeStart:.22,iframeEnd:.73};
 const SENTINEL={id:'sentinel-cut',kind:'sentinel',index:0,pose:'diagonal-right',windup:.72,active:.22,followThrough:.20,recovery:.48,stamina:0,damage:19,poise:18,reach:2.05,lunge:.46,hitstop:.052,cancelAt:1.62,guardAt:1.62,chainOpen:1.62,chainClose:1.62,twist:-.68,slash:1,turnLock:.48};
 const BOSS={
  sweep:{pose:'wide-sweep',windup:.98,active:.24,followThrough:.25,recovery:.66,damage:28,poise:30,reach:3.45,lunge:.62,twist:-1.08,slash:1,turnLock:.52,hitstop:.066},
@@ -27,7 +27,7 @@ const BOSS={
 // Native seconds measured against the retargeted production blade, not an
 // unarmed attack clip. Segmented A/B clips keep their authored recovery.
 function animationFor(p){
- if(p.kind==='roll')return {clip:'Armed_Roll',windup:.20,activeEnd:.78,followEnd:1.03,duration:1.4666667};
+ if(p.kind==='roll')return {clip:'Knight_Roll',windup:.20,activeEnd:.73,followEnd:.95,duration:1.4};
  if(p.type==='combo')return {clip:'Sword_Regular_A',parts:[['Sword_Regular_A',.4333333],['Sword_Regular_B',.5333333],['Sword_Regular_B_Rec',1.0333333]],windup:.20,activeEnd:.7533333,followEnd:.9666666,duration:2};
  if(p.kind==='heavy'||p.kind==='critical'||p.index===2&&p.kind==='light'||p.type==='slam')return {clip:'Sword_Attack',windup:.38,activeEnd:.51,followEnd:.83,duration:1.5333333};
  const b=p.type==='backhand'||p.kind==='light'&&p.index===1;

@@ -7,7 +7,7 @@
   <meta name="description" content="灰烬誓约：钟鸣之章。穿过月下回廊，击败守卫，在钟楼前完成最后的誓言。一个可直接在浏览器游玩的原创第三人称动作游戏。">
   <title>灰烬誓约 · 钟鸣之章</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 3L38 42L32 59L26 42Z' fill='%23c8a36e'/%3E%3Cpath d='M13 39H51' stroke='%23c8a36e' stroke-width='4'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="next.css?v=15">
+  <link rel="stylesheet" href="next.css?v=16">
 </head>
 <body data-mode="title">
   <canvas id="game" tabindex="0" aria-label="灰烬誓约：钟鸣之章，3D 游戏场景"></canvas>
@@ -39,7 +39,7 @@
     <div class="outer-frame" aria-hidden="true"></div>
     <div class="title-edition"><span>序章 / Ⅰ</span><i></i><span>THE FORSAKEN CLOISTER</span></div>
     <div class="title-block"><div class="title-kicker"><i></i> THE LAST BELL</div><h1>灰烬誓约</h1><div class="title-english">ASHEN VOW</div><div class="fine-rule"><i></i></div><p>雨落在无人的回廊。<br>最后一声钟鸣，仍在等待。</p><nav class="title-actions"><button id="continue-button" class="primary is-hidden"><span>继续旅途</span><i>→</i></button><button id="start-button" class="primary"><span>踏入余烬</span><i>→</i></button><button id="title-help" class="text-button">旅途指引 <span>操作说明</span></button><button id="title-settings" class="text-button">设置 <span>画质与声音</span></button></nav></div>
-    <div class="title-location"><span>Ⅰ</span><div>THE FORSAKEN CLOISTER<small>雨夜回廊 · 钟鸣之章</small></div></div><div class="title-footer"><span>钟鸣之章 <i>·</i> v15</span><span>键盘鼠标 / 标准手柄 <i>·</i> <kbd>Enter</kbd> 开始</span></div>
+    <div class="title-location"><span>Ⅰ</span><div>THE FORSAKEN CLOISTER<small>雨夜回廊 · 钟鸣之章</small></div></div><div class="title-footer"><span>钟鸣之章 <i>·</i> v16</span><span>键盘鼠标 / 标准手柄 <i>·</i> <kbd>Enter</kbd> 开始</span></div>
   </main>
 
   <section id="pause-screen" class="menu-surface is-hidden"><div class="pause-content"><small>BETWEEN THE EMBERS</small><h2>时光暂歇</h2><div class="fine-rule"><i></i></div><button id="resume-button" class="primary"><span>继续旅途</span><i>→</i></button><button id="pause-settings" class="text-button">设置 <span>画质与声音</span></button><button id="pause-help" class="text-button">旅途指引 <span>操作说明</span></button><button id="pause-journal" class="text-button">旅途手记 <span>地图与残响</span></button><button id="pause-restart" class="text-button">从检查点重新开始</button><button id="pause-title" class="text-button">返回主菜单</button><p class="pause-key"><kbd>Esc</kbd> 返回</p></div></section>
@@ -116,6 +116,6 @@
   <div id="loading-strip" class="is-hidden"><i></i><span>唤醒庭院…</span></div>
   <div id="fatal" hidden><small>THE EMBER IS INTERRUPTED</small><h2>未能唤醒庭院</h2><p id="fatal-text"></p><button onclick="location.reload()" class="primary">重新载入 →</button></div>
   <script>addEventListener('error',e=>{const p=document.getElementById('fatal');if(p){p.hidden=false;document.getElementById('fatal-text').textContent=e.message||'图形资源未能载入，请确认浏览器已开启硬件加速后重试。'}});</script>
-  <script src="vendor/three.min.js"></script><script src="vendor/GLTFLoader.js?v=15"></script><script src="feel.js?v=15"></script><script src="navigation.js?v=15"></script><script src="locomotion.js?v=15"></script><script src="rig-constraints.js?v=15"></script><script src="motion.js?v=15"></script><script src="characters.js?v=15"></script><script src="surfaces.js?v=15"></script><script src="weather.js?v=15"></script><script src="level.js?v=15"></script><script src="render.js?v=15"></script><script src="audio.js?v=15"></script><script src="ui.js?v=15"></script><script src="journey.js?v=15"></script><script src="tactics.js?v=15"></script><script src="controls.js?v=15"></script><script src="director.js?v=15"></script><script src="impact.js?v=15"></script><script src="game.js?v=15"></script>
+  <script src="vendor/three.min.js"></script><script src="vendor/GLTFLoader.js?v=16"></script><script src="feel.js?v=16"></script><script src="navigation.js?v=16"></script><script src="locomotion.js?v=16"></script><script src="rig-constraints.js?v=16"></script><script src="motion.js?v=16"></script><script src="characters.js?v=16"></script><script src="surfaces.js?v=16"></script><script src="weather.js?v=16"></script><script src="level.js?v=16"></script><script src="render.js?v=16"></script><script src="audio.js?v=16"></script><script src="ui.js?v=16"></script><script src="journey.js?v=16"></script><script src="tactics.js?v=16"></script><script src="controls.js?v=16"></script><script src="director.js?v=16"></script><script src="impact.js?v=16"></script><script src="game.js?v=16"></script>
 </body>
 </html>

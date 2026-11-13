@@ -24,18 +24,19 @@ function closeGauntlets(scene,T){
   position.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingBox();geometry.computeBoundingSphere();mesh.userData.closedGauntlets={...stats};
  });return stats;
 }
-function load({THREE:T,url,motionUrl='assets/knight-motion-v15.glb',onProgress,forward=0,gripEuler=null,forceEquipment=false}){
-  if(template&&template.url===url&&template.motionUrl===motionUrl)return Promise.resolve(template.info);
+function load({THREE:T,url,motionUrl=['assets/knight-motion-v16.glb','assets/knight-footwork-v16.glb'],onProgress,forward=0,gripEuler=null,forceEquipment=false}){
+  const motionUrls=Array.isArray(motionUrl)?motionUrl.slice():motionUrl?[motionUrl]:[],motionKey=JSON.stringify(motionUrls);
+  if(template&&template.url===url&&template.motionKey===motionKey)return Promise.resolve(template.info);
   if(pending)return pending;
   pending=new Promise((resolve,reject)=>{
     if(!T.GLTFLoader){reject(new Error('GLTFLoader must be loaded before characters.js'));return;}
     new T.GLTFLoader().load(url,async gltf=>{try{
-      const motion=motionUrl?await new Promise((yes,no)=>new T.GLTFLoader().load(motionUrl,yes,undefined,no)):null;
+      const motions=await Promise.all(motionUrls.map(path=>new Promise((yes,no)=>new T.GLTFLoader().load(path,yes,undefined,no))));
       gltf.scene.updateMatrixWorld(true);const gauntlets=closeGauntlets(gltf.scene,T),bounds=new T.Box3().setFromObject(gltf.scene),size=bounds.getSize(new T.Vector3()),bones=[],meshes=[];
       gltf.scene.traverse(o=>{if(o.isBone)bones.push(o.name);if(o.isMesh)meshes.push({name:o.name,skinned:!!o.isSkinnedMesh,triangles:(o.geometry.index?o.geometry.index.count:o.geometry.attributes.position.count)/3,materials:(Array.isArray(o.material)?o.material:[o.material]).map(m=>m.name)});});
       // r128 GLTFLoader does not copy animation.extras to AnimationClip. Read
       // the source JSON explicitly so controller motion keeps its real timing.
-      const copyClip=(c,extra)=>{const clone=c.clone();clone.userData=extra||c.userData||{};return clone;},originalClips=gltf.animations.map(c=>copyClip(c)),motionClips=(motion?.animations||[]).map((c,i)=>copyClip(c,motion.parser.json.animations[i]?.extras)),clips=[...originalClips,...motionClips],gait={};
+      const copyClip=(c,extra)=>{const clone=c.clone();clone.userData=extra||c.userData||{};return clone;},originalClips=gltf.animations.map(c=>copyClip(c)),motionClips=motions.flatMap(motion=>motion.animations.map((c,i)=>copyClip(c,motion.parser.json.animations[i]?.extras))),clips=[...originalClips,...motionClips],gait={};
       // The original root-motion variants provide actual travelled meters per
       // clip. Retain that cadence before removing root displacement.
       for(const clip of clips){const match=/^(walk|run)_root$/i.exec(clip.name);if(!match)continue;const track=clip.tracks.find(t=>/(?:hips|pelvis|root).*\.position$/i.test(t.name)&&t.getValueSize()===3);if(track){const last=track.values.length-3,distance=Math.hypot(track.values[last]-track.values[0],track.values[last+2]-track.values[2]);if(distance>.05)gait[match[1].toLowerCase()]={distance,duration:clip.duration};}}
@@ -43,7 +44,7 @@ function load({THREE:T,url,motionUrl='assets/knight-motion-v15.glb',onProgress,f
       // collision-aware root movement in the gameplay controller.
       for(const clip of originalClips)for(const track of clip.tracks){if(/(?:hips|pelvis|root|armature).*\.position$/i.test(track.name)&&track.getValueSize()===3){const x=track.values[0],z=track.values[2];for(let i=0;i<track.values.length;i+=3){track.values[i]=x;track.values[i+2]=z;}}}
       const info={url,motionUrl,bounds:{height:size.y,width:size.x,depth:size.z},bones,meshes,gauntlets,originalAnimations:originalClips.map(c=>c.name),animations:clips.map(c=>({name:c.name,duration:c.duration,tracks:c.tracks.length})),triangles:meshes.reduce((n,m)=>n+m.triangles,0)};
-      template={url,motionUrl,gltf,clips,motionClips,gait,info,forward,gripEuler,forceEquipment};pending=null;resolve(info);
+      template={url,motionUrl,motionKey,gltf,clips,motionClips,gait,info,forward,gripEuler,forceEquipment};pending=null;resolve(info);
     }catch(error){pending=null;reject(error);}
     },onProgress,e=>{pending=null;reject(new Error('Unable to load the skinned character asset: '+(e.message||url)));});
   });return pending;

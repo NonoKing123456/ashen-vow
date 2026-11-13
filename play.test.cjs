@@ -27,11 +27,12 @@ async function boot(options={}){
   AshenRender:{create:()=>({scene,camera,renderer,setQuality:noop,render:noop,resize:noop})},AshenAudio:{create:()=>({setEnabled:noop,unlock:noop,play:noop,update:noop})},AshenUI:{create:c=>{callbacks=c;return ui}},AshenLevel:{create:()=>level},
   AshenCharacters:{load:async()=>{},createKnight(){const root=new T.Group(),blade=new T.Group();root.add(blade);scene.add(root);return {root,weapon:{group:blade,base:new T.Vector3(0,0,.20),tip:new T.Vector3(0,0,2.05)},
    // Deliberately simple fixture displacement, not production root-motion data.
-   actionRootDelta(profile,from,to){const total=Math.max(.001,profile.total),at=t=>Math.max(0,Math.min(total,t));return{x:0,z:(profile.lunge||0)*(at(to)-at(from))/total}},
+   planRoll(profile,direction,facingYaw){const s=Math.sin(facingYaw),c=Math.cos(facingYaw);return {...profile,rollPlan:{facingYaw,localX:direction.x*c-direction.z*s,localZ:direction.x*s+direction.z*c}}},
+   actionRootDelta(profile,from,to){const total=Math.max(.001,profile.total),at=t=>Math.max(0,Math.min(total,t)),distance=(profile.lunge||0)*(at(to)-at(from))/total;return{x:(profile.rollPlan?.localX||0)*distance,z:(profile.rollPlan?.localZ??1)*distance}},
    animate(o){this.lastAnimation={speed:o.speed,moveX:o.moveX,moveZ:o.moveZ};blade.position.set(.12,1.05,0);let yaw=0;if(o.attack&&o.state==='attack'){const pose=ctx.AshenCombat.samplePose(o.attack,o.time);yaw=(pose.localStrike-.5)*1.0;this.weapon.tip.z=o.attack.reach;}blade.rotation.y=yaw;root.updateMatrixWorld(true);if(options.poseContacts)this.contactPoints=[new T.Vector3(root.position.x+.7,1,root.position.z)];},updateEquipment(){root.updateWorldMatrix(true,true)},setHit:noop};}}
  };
  ctx.location={hostname:'localhost'};ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);
- for(const file of ['feel.js','navigation.js','journey.js','tactics.js',...(options.cinematics?['director.js','impact.js']:[])])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8'),ctx);
+ for(const file of ['feel.js','navigation.js','locomotion.js','journey.js','tactics.js',...(options.cinematics?['director.js','impact.js']:[])])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8'),ctx);
  const source=fs.readFileSync(path.join(__dirname,'game.js'),'utf8').replace(/\}\)\(\);\s*$/,'globalThis.qa={player,enemies,boss,level,camera,start,retry,frame,updatePlayer,damage,change,resolveHits,journey,updateContext,interact,selectRelic,get flags(){return {dead,won,bossDefeated,paused,checkpoint,gateOpen,locked,time,directing:!!director?.active,combatTime,playTime,hitstop,frameCount,guarding,guardTime};}};})();');
  await vm.runInContext(source,ctx);const q=ctx.qa;
  q.press=(code,repeat=false)=>listeners.keydown({code,repeat,preventDefault:noop});q.release=(code)=>listeners.keyup({code});q.tick=(n=1)=>{for(let i=0;i<n;i++){now+=1000/60;q.frame(now)}};

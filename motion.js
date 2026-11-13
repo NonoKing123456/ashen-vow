@@ -41,29 +41,68 @@ function createAnimator(actor,T){
   if(!bone)return;actor.root.getWorldQuaternion(rootQ);
   for(const [a,v]of [['x',x],['y',y],['z',z]]){if(Math.abs(v)<.00001)continue;axis.set(a==='x'?1:0,a==='y'?1:0,a==='z'?1:0).applyQuaternion(rootQ);bone.parent.getWorldQuaternion(parentQ);axis.applyQuaternion(parentQ.invert());bone.quaternion.premultiply(deltaQ.setFromAxisAngle(axis,v));bone.updateWorldMatrix(false,true);}
  }
- function trajectory(name,time){
-  const samples=clip(name).userData?.root_motion?.samples;if(!samples?.length)return {x:0,z:0};
+ function trajectorySamples(samples,time){
+  if(!samples?.length)return {x:0,z:0};
   let i=0;while(i<samples.length-2&&samples[i+1][0]<time)i++;
   const a=samples[i],b=samples[Math.min(i+1,samples.length-1)],u=clamp((time-a[0])/Math.max(.000001,b[0]-a[0]),0,1);
   return {x:a[1]+(b[1]-a[1])*u,z:a[3]+(b[3]-a[3])*u};
  }
+ function trajectory(name,time){return trajectorySamples(clip(name).userData?.root_motion?.samples,time);}
+ function rollYaw(plan,nativeTime){
+  if(!plan?.freeTurnWindow)return 0;
+  const [start,end]=plan.freeTurnWindow,ramp=Math.min(.10,(end-start)*.25);
+  return plan.residualYaw*smooth((nativeTime-start)/ramp)*(1-smooth((nativeTime-(end-ramp))/ramp));
+ }
  function rootAt(profile,time){
+  if(profile?.rollPlan)return trajectorySamples(profile.rollPlan.rootSamples,time);
   const s=actionSample(profile,time),m=profile?.animation;if(!s)return {x:0,z:0};
   const p=trajectory(s.clip,s.time),first=clip(m.clip).userData?.root_motion;
   if(m.recoveryClip&&s.clip===m.recoveryClip){const previous=trajectory(m.clip,m.clipDuration);p.x+=previous.x;p.z+=previous.z;}
   if(m.parts)for(const [name,duration]of m.parts){if(name===s.clip)break;const previous=trajectory(name,duration);p.x+=previous.x;p.z+=previous.z;}
-  const displacement=first?.displacement||[0,0,0],recovery=m.recoveryClip?clip(m.recoveryClip).userData?.root_motion:null,path=(m.parts?m.parts.reduce((sum,[name])=>sum+(Number(clip(name).userData?.root_motion?.horizontal_path_m)||0),0):(Number(first?.horizontal_path_m)||Math.hypot(displacement[0],displacement[2]))+(Number(recovery?.horizontal_path_m)||0))||1,scale=(profile.lunge||0)/path;
+  const displacement=first?.displacement||[0,0,0],recovery=m.recoveryClip?clip(m.recoveryClip).userData?.root_motion:null,path=(m.parts?m.parts.reduce((sum,[name])=>sum+(Number(clip(name).userData?.root_motion?.horizontal_path_m)||0),0):(Number(first?.horizontal_path_m)||Math.hypot(displacement[0],displacement[2]))+(Number(recovery?.horizontal_path_m)||0))||1,scale=profile.nativeRootMotion?1:(profile.lunge||0)/path;
   return {x:p.x*scale,z:p.z*scale};
  }
  // Returns motion only. navigation.js remains the sole owner of root X/Z.
  actor.actionRootDelta=(profile,from,to)=>{const a=rootAt(profile,from),b=rootAt(profile,to);return {x:b.x-a.x,z:b.z-a.z};};
+ // Commit source selection once. Both the review page and the game consume
+ // this plan; a native backward/side trajectory must never be rotated as +Z.
+ actor.planRoll=(profile,direction,facingYaw=actor.root.rotation.y)=>{
+  const sin=Math.sin(facingYaw),cos=Math.cos(facingYaw),localX=direction.x*cos-direction.z*sin,localZ=direction.x*sin+direction.z*cos,requested=Math.atan2(localX,localZ);
+  let selected=null;
+  for(const name of ['Knight_Roll','Knight_Roll_Back','Knight_Roll_Left','Knight_Roll_Right']){
+   const source=byName.get(name),meta=source?.userData?.root_motion,d=meta?.displacement;if(!d||Math.hypot(d[0],d[2])<.01)continue;
+   const heading=Math.atan2(d[0],d[2]),residual=Math.atan2(Math.sin(requested-heading),Math.cos(requested-heading));
+   if(!selected||Math.abs(residual)<Math.abs(selected.residual))selected={source,meta,heading,residual};
+  }
+  if(!selected)throw new Error('The production roll has no native directional trajectory.');
+  const {source,meta,heading,residual}=selected,window=meta.free_turn_window;
+  const freeTurnWindow=Array.isArray(window)&&window.length===2&&window[1]>window[0]&&window[1]<=meta.recovery_support_start?window.slice():null;
+  const planned={...profile,rollPlan:null,animation:{...profile.animation,clip:source.name,duration:source.duration}},plan={facingYaw,nativeHeading:heading,residualYaw:freeTurnWindow?clamp(residual,-Math.PI/4,Math.PI/4):0,requestedYaw:requested,freeTurnWindow,recoverySupportStart:meta.recovery_support_start,rootSamples:[[0,0,0,0]]};
+  // Integrate rotated INCREMENTS on a fixed native sampling grid. Rotating
+  // absolute points would sweep the entire accumulated path during recovery.
+  // Storing the resulting curve also makes 20..120 Hz consumers agree.
+  const count=Math.ceil(planned.total*120);let x=0,z=0;
+  for(let i=1;i<=count;i++){
+   const a=(i-1)/count*planned.total,b=i/count*planned.total,p=rootAt(planned,a),q=rootAt(planned,b),native=actionSample(planned,(a+b)*.5).time,yaw=rollYaw(plan,native),sn=Math.sin(yaw),cs=Math.cos(yaw),dx=q.x-p.x,dz=q.z-p.z;
+   x+=dx*cs+dz*sn;z+=dz*cs-dx*sn;plan.rootSamples.push([b,x,0,z]);
+  }
+  // Preserve the requested travel direction without moving a planted foot.
+  // Fit the endpoint only while both source feet are free. The accumulated
+  // offset stays constant throughout the native support/recovery tail.
+  if(freeTurnWindow&&Math.abs(residual)>.01){
+   const displacement=meta.displacement,distance=Math.hypot(displacement[0],displacement[2]),length=Math.max(.00001,Math.hypot(localX,localZ)),correction={x:localX/length*distance-x,z:localZ/length*distance-z};
+   plan.endpointCorrection=correction;
+   for(const point of plan.rootSamples){const native=actionSample(planned,point[0]).time,weight=smooth((native-freeTurnWindow[0])/(freeTurnWindow[1]-freeTurnWindow[0]));point[1]+=correction.x*weight;point[3]+=correction.z*weight;}
+  }
+  planned.rollPlan=plan;return planned;
+ };
  function animate(o={}){
   const dt=clamp(o.dt||0,0,.05),t=Number.isFinite(o.t)?o.t:clock,time=Math.max(0,o.time||0),state=o.state||'idle',speed=Math.max(0,o.speed||0);clock+=dt;
   const dead=!!o.dead||state==='dead',attacking=['light','heavy','attack'].includes(state),rolling=state==='roll'||state==='dodge',hurt=state==='hurt'||state==='stagger',healing=state==='heal';
   const changed=state!==lastState||time<lastTime-.05;
-  if(changed){transitionFrom=preContactPose.map(d=>({p:d.p.clone(),q:d.q.clone()}));transitionClearance={...carryClearance};transitionAge=0;if(['roll','dodge'].includes(lastState)&&!rolling)landingAge=0;}
+  if(changed){transitionFrom=preContactPose.map(d=>({p:d.p.clone(),q:d.q.clone()}));transitionClearance={...carryClearance};transitionAge=0;}
   transitionAge+=dt;landingAge+=dt;
-  const gait=gaitDriver.update({dt,speed,moveX:o.moveX,moveZ:o.moveZ,enabled:!rolling&&!dead&&!attacking&&!hurt&&!healing});actor.gaitFrame=gait;actor.gaitPhase=gait.phase;
+  const rollSample=rolling?actionSample(o.attack,time):null,gait=gaitDriver.update({dt,speed,moveX:o.moveX,moveZ:o.moveZ,action:rollSample,enabled:!rolling&&!dead&&!attacking&&!hurt&&!healing});actor.gaitFrame=gait;actor.gaitPhase=gait.phase;if(gait.actionLandings.length)landingAge=0;
   combatBlend+=((o.combat||o.guarding?1:0)-combatBlend)*(1-Math.exp(-6*dt));
   guardBlend+=((o.guarding&&!attacking&&!dead&&!rolling?1:0)-guardBlend)*(1-Math.exp(-18*dt));
   actor.pivot.quaternion.identity();actor.pivot.position.y=.95;
@@ -73,14 +112,14 @@ function createAnimator(actor,T){
   const carry='Sword_Regular_A_Rec',carryTime=clip(carry).duration-.000001;
   let active=null,sourceWeight=0,current=carry,mask='sword';
   if(attacking){active=actionSample(o.attack,time);if(!active)throw new Error('A sword strike has no source motion schedule.');const recoveryBlend=active.clip==='Sword_Attack'?.28:.16;sourceWeight=1-smooth((time-(o.attack.total-recoveryBlend))/recoveryBlend);}
-  else if(rolling){current='Armed_Roll';const duration=o.attack?.total||clip(current).duration;active={clip:current,time:time/duration*clip(current).duration};sourceWeight=1-smooth((time-(duration-.18))/.18);mask='all';}
+  else if(rolling){current=o.attack?.animation?.clip||'Armed_Roll';const duration=o.attack?.total||clip(current).duration;active={clip:current,time:time/duration*clip(current).duration};sourceWeight=1-smooth((time-(duration-.18))/.18);mask='all';}
   else if(dead){current='Death01';active={clip:current,time:Math.min(time,clip(current).duration)};sourceWeight=1;mask='all';}
   else if(hurt&&state!=='stagger'){current='Hit_Chest';active={clip:current,time:Math.min(time,clip(current).duration)};sourceWeight=1-smooth((time-.20)/.16);mask='sword';}
   const baseWeight=1-sourceWeight;
   if(baseWeight>.000001){
-   const moving=speed>.12&&!dead&&!healing&&!hurt,run=moving?gait.runWeight:0;
-   if(moving){sample(originalWalk,'body',gait.walkTime,baseWeight*(1-run));sample(originalRun,'body',gait.runTime,baseWeight*run);current=run>.5?originalRun:originalWalk;}
-   else{sample(carry,'body',carryTime,baseWeight*(1-guardBlend));sample('Idle_Shield_Loop','body',cycle('Idle_Shield_Loop',t),baseWeight*guardBlend);}
+   const moving=speed>.12&&!dead&&!healing&&!hurt,move=gait.directional?(!dead&&!healing&&!hurt?gait.moveWeight:0):moving?1:0;
+   if(move>.00001){for(const layer of gait.layers)sample(layer.name,'body',layer.time,baseWeight*move*layer.weight);current=gait.layers.reduce((best,layer)=>layer.weight>best.weight?layer:best,{name:carry,weight:0}).name;}
+   if(move<.99999){sample(carry,'body',carryTime,baseWeight*(1-move)*(1-guardBlend));sample('Idle_Shield_Loop','body',cycle('Idle_Shield_Loop',t),baseWeight*(1-move)*guardBlend);}
    sample(carry,'right',carryTime,baseWeight*(1-guardBlend));sample('Sword_Block','right',.40,baseWeight*guardBlend);
   }
   if(active){current=active.clip;const previous=active.previous;sample(active.clip,mask,active.time,sourceWeight*(1-(previous?.weight||0)));if(previous)sample(previous.clip,mask,previous.time,sourceWeight*previous.weight);}
@@ -90,7 +129,7 @@ function createAnimator(actor,T){
   for(let i=0;i<defaults.length;i++){const b=defaults[i].bone,p=sourcePose[i];p.p.copy(b.position);p.q.copy(b.quaternion);p.s.copy(b.scale);}
   actor.root.updateWorldMatrix(true,true);actor.root.getWorldQuaternion(rootQ);
   localTravel.set(Number(o.moveX)||0,0,Number(o.moveZ)||0).applyQuaternion(rootQ.clone().invert());
-  if(speed>.12&&!attacking&&!rolling&&!hurt&&!dead&&!healing&&localTravel.lengthSq()>.04){
+  if(!gait.directional&&speed>.12&&!attacking&&!rolling&&!hurt&&!dead&&!healing&&localTravel.lengthSq()>.04){
    const yaw=gait.directionYaw,hip=clamp(yaw,-.30,.30);offset(bones.hips,0,hip,0);offset(bones.chest,0,-hip*.45,0);offset(bones.leftThigh,0,yaw-hip,0);offset(bones.rightThigh,0,yaw-hip,0);
   }
   if(!attacking&&!rolling&&!dead&&!hurt&&!healing){
@@ -113,11 +152,9 @@ function createAnimator(actor,T){
   const leftTarget=dead?0:rolling?baseWeight:1-guardBlend,rightTarget=dead?0:baseWeight*(1-guardBlend);
   carryClearance={left:transitionClearance.left+(leftTarget-transitionClearance.left)*entryWeight,right:transitionClearance.right+(rightTarget-transitionClearance.right)*entryWeight};
   if(rolling){
-   const duration=o.attack?.total||clip(current).duration,u=clamp(time/duration,0,1);localTravel.copy(o.rollDir||{x:0,y:0,z:1});localTravel.y=0;
-   if(localTravel.lengthSq()<.001)localTravel.set(0,0,1);localTravel.normalize().applyQuaternion(rootQ.clone().invert());
-   const turn=smooth(u/.18)*(1-smooth((u-.82)/.18)),yaw=Math.atan2(localTravel.x,localTravel.z)*turn;
+   const duration=o.attack?.total||clip(current).duration,u=clamp(time/duration,0,1),yaw=rollYaw(o.attack?.rollPlan,active.time);
    actor.pivot.quaternion.setFromAxisAngle(new T.Vector3(0,1,0),yaw);
-   actor.motionFrame={state,progress:u,tuck:Math.sin(Math.PI*u),angle:0,yaw,style:'source-armed-roll',source:current};
+   actor.motionFrame={state,progress:u,tuck:Math.sin(Math.PI*u),angle:0,yaw,style:'authored-knight-roll',source:current};
   }else actor.motionFrame={state,progress:0,tuck:0,angle:0,source:current};
   actor.root.updateWorldMatrix(true,true);
   constraints.carries({sourcePose:true,leftCarryAmount:carryClearance.left,rightCarryAmount:carryClearance.right,combat:combatBlend,guard:guardBlend,speed,phase:gait.phase,attacking,rolling,healing,hurt,dead,obstacles:o.obstacles});

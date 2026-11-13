@@ -112,27 +112,60 @@ function create(actor,T){
   actor.pivot.position.y+=correction/root.scale.y;
   actor.root.updateWorldMatrix(true,true);
  }
- const plants={left:{active:false,blocked:false,point:V(),orientation:new T.Quaternion()},right:{active:false,blocked:false,point:V(),orientation:new T.Quaternion()}},lastPlantRoot=V(Infinity,0,0),plantUpperQ=new T.Quaternion(),plantKneeQ=new T.Quaternion(),plantFootQ=new T.Quaternion();
+ const plant=()=>({active:false,blocked:false,point:V(),orientation:new T.Quaternion(),maxWarp:0,releaseAge:-1,releaseOffset:V(),releaseRotation:new T.Quaternion()});
+ const plants={left:plant(),right:plant()},lastPlantRoot=V(Infinity,0,0),lastPlantTravel=V(),plantTravel=V(),plantUpperQ=new T.Quaternion(),plantKneeQ=new T.Quaternion(),plantFootQ=new T.Quaternion();
+ function solveFoot(upper,knee,foot,target,orientation,kneeForward){
+  plantUpperQ.copy(upper.quaternion);plantKneeQ.copy(knee.quaternion);plantFootQ.copy(foot.quaternion);
+  knee.getWorldPosition(pole);pole.add(kneeForward);arm(upper,knee,foot,target,pole);
+  foot.parent.getWorldQuaternion(parentQ);foot.quaternion.copy(parentQ.invert()).multiply(orientation).normalize();foot.updateWorldMatrix(false,true);
+  if(foot.getWorldPosition(p2).distanceTo(target)>.003*root.scale.x){upper.quaternion.copy(plantUpperQ);knee.quaternion.copy(plantKneeQ);foot.quaternion.copy(plantFootQ);upper.updateWorldMatrix(false,true);return false;}
+  return true;
+ }
  function plantFeet({frame,dt,speed=0,yawRate=0,enabled=true}){
-  const discontinuity=lastPlantRoot.distanceTo(root.position)>.30*root.scale.x;lastPlantRoot.copy(root.position);
-  const permitted=enabled&&speed>.2&&speed<3.1*root.scale.x&&Math.abs(yawRate||0)<.9&&!discontinuity;
+  plantTravel.copy(root.position).sub(lastPlantRoot);const discontinuity=plantTravel.length()>.30*root.scale.x;
+  const headingChanged=!discontinuity&&plantTravel.lengthSq()>.000001&&lastPlantTravel.lengthSq()>.000001&&plantTravel.clone().normalize().dot(lastPlantTravel)<.80;lastPlantRoot.copy(root.position);
+  const permitted=enabled&&speed>.2&&speed<3.1*root.scale.x&&Math.abs(yawRate||0)<.9&&!discontinuity&&!headingChanged,step=clamp(Number(dt)||0,0,.05);
+  if(!permitted)lastPlantTravel.set(0,0,0);else if(plantTravel.lengthSq()>.000001)lastPlantTravel.copy(plantTravel).normalize();
+  // A mixture of different travel directions needs a bounded contact warp:
+  // quaternion-blended legs do not follow the weighted source ankle exactly.
+  // Walk/run mixing alone retains the original small allowance.
+  const directions=new Set((frame?.layers||[]).filter(layer=>layer.weight>.05).map(layer=>/^Knight_Strafe_Left$/.test(layer.name)?'left':/^Knight_Strafe_Right$/.test(layer.name)?'right':/^Knight_Backward$/.test(layer.name)?'back':'forward'));
+  const directionalBlend=!!frame?.directional&&directions.size>1;
   actor.footPlant={};root.getWorldQuaternion(rootQ);const kneeForward=V(0,0,.24*root.scale.x).applyQuaternion(rootQ);
   for(const side of ['left','right']){
    const lock=plants[side],upper=rig[side+'Thigh'],knee=rig[side+'Shin'],foot=rig[side+'Foot'];if(!upper||!knee||!foot)continue;
-   const candidate=permitted&&!!frame?.feet?.[side]?.lockedCandidate;
-   if(!candidate){lock.active=false;lock.blocked=false;}
-   else if(!lock.active&&!lock.blocked){foot.getWorldPosition(lock.point);foot.getWorldQuaternion(lock.orientation);lock.active=true;}
+   const source=frame?.feet?.[side],candidate=permitted&&!!source?.lockedCandidate,rawPoint=foot.getWorldPosition(V()),rawRotation=foot.getWorldQuaternion(new T.Quaternion());
+   // Acquisition is deliberately stricter than keeping an established flat
+   // contact. A source velocity-confidence boundary is not itself toe-off.
+   const maintaining=permitted&&lock.active&&source?.contact>.75&&source?.support>.50&&rawPoint.y-lock.point.y<.008*root.scale.y;
+   if(!permitted){lock.active=false;lock.blocked=false;lock.releaseAge=-1;}
+   else if(!candidate&&!maintaining){
+    if(lock.active){lock.releaseAge=0;lock.releaseOffset.copy(lock.point).sub(rawPoint);lock.releaseRotation.copy(lock.orientation).multiply(rawRotation.clone().invert());}
+    lock.active=false;lock.blocked=false;
+   }
+   else if(candidate&&!lock.active&&!lock.blocked&&lock.releaseAge<0){
+    const chain=upper.getWorldPosition(p0).distanceTo(knee.getWorldPosition(p1))+p1.distanceTo(foot.getWorldPosition(p2));
+    lock.maxWarp=directionalBlend?Math.min(chain*.10,.095*root.scale.x):.055*root.scale.x;
+    // Keep this allowance for this support episode. Letting a direction weight
+    // cross a threshold must not release an otherwise reachable planted foot.
+    foot.getWorldPosition(lock.point);foot.getWorldQuaternion(lock.orientation);lock.active=true;
+   }
    if(lock.active){
-    foot.getWorldPosition(p2);const correction=p2.distanceTo(lock.point);
-    if(correction>.055*root.scale.x){lock.active=false;lock.blocked=true;}
+    upper.getWorldPosition(p0);knee.getWorldPosition(p1);foot.getWorldPosition(p2);
+    const correction=p2.distanceTo(lock.point),a=p0.distanceTo(p1),b=p1.distanceTo(p2),reach=p0.distanceTo(lock.point),reachable=reach<a+b-.012*root.scale.x&&reach>Math.abs(a-b)+.008*root.scale.x;
+    if(correction>lock.maxWarp||!reachable){lock.active=false;lock.blocked=true;lock.releaseAge=-1;}
     else{
-     plantUpperQ.copy(upper.quaternion);plantKneeQ.copy(knee.quaternion);plantFootQ.copy(foot.quaternion);
-     knee.getWorldPosition(pole);pole.add(kneeForward);arm(upper,knee,foot,lock.point,pole);
-     foot.parent.getWorldQuaternion(parentQ);foot.quaternion.copy(parentQ.invert()).multiply(lock.orientation).normalize();foot.updateWorldMatrix(false,true);
-     if(foot.getWorldPosition(p2).distanceTo(lock.point)>.003*root.scale.x){upper.quaternion.copy(plantUpperQ);knee.quaternion.copy(plantKneeQ);foot.quaternion.copy(plantFootQ);upper.updateWorldMatrix(false,true);lock.active=false;lock.blocked=true;}
+     if(!solveFoot(upper,knee,foot,lock.point,lock.orientation,kneeForward)){lock.active=false;lock.blocked=true;lock.releaseAge=-1;}
     }
    }
-   foot.getWorldPosition(p2);actor.footPlant[side]={active:lock.active,error:lock.active?p2.distanceTo(lock.point):0,anchor:lock.point.clone()};
+   if(lock.releaseAge>=0&&permitted){
+    // Once the foot leaves support, let its source swing proceed immediately
+    // and remove only the *fixed* contact correction over a short interval.
+    // Following the old world anchor here would drag the departing foot.
+    lock.releaseAge+=step;const u=clamp(lock.releaseAge/.12,0,1),weight=1-u*u*(3-2*u),target=rawPoint.clone().addScaledVector(lock.releaseOffset,weight),orientation=new T.Quaternion().slerp(lock.releaseRotation,weight).multiply(rawRotation);
+    if(!solveFoot(upper,knee,foot,target,orientation,kneeForward)||u>=1)lock.releaseAge=-1;
+   }
+   foot.getWorldPosition(p2);actor.footPlant[side]={active:lock.active,releasing:lock.releaseAge>=0,error:lock.active?p2.distanceTo(lock.point):0,anchor:lock.point.clone()};
   }
  }
  const restFeet={};root.getWorldQuaternion(rootQ);
@@ -226,7 +259,7 @@ function create(actor,T){
  function equipmentFloor({rolling=false}={}){
   // The offline armed roll already carries both solid items clear of the body
   // and ground. Keep its arm channels intact; the shared ground pass is enough.
-  if(rolling&&actor.motionFrame?.source==='Armed_Roll'){actor.equipmentIntegrity={rightShift:0,leftShift:0,unresolved:null,source:'offline-armed-roll'};return;}
+  if(rolling&&/^(Armed_Roll|Knight_Roll(?:_Back|_Left|_Right)?)$/.test(actor.motionFrame?.source||'')){actor.equipmentIntegrity={rightShift:0,leftShift:0,unresolved:null,source:'offline-armed-roll'};return;}
   actor.equipmentIntegrity={rightShift:0,leftShift:0,unresolved:null};separateSimple();
   const floor=root.position.y+.018*root.scale.y;
   for(let pass=0;pass<2;pass++){

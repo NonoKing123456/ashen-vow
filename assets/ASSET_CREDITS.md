@@ -68,5 +68,19 @@ calibrates T/A rest poses and the opposite palm transverse axes. Source root
 trajectories remain as animation metadata; collision-aware navigation consumes
 their scaled displacement. `Armed_Roll` preserves the original Roll trunk, hip,
 leg and root channels while adapting both arms for the physical sword and
-shield. No separate side/back roll is claimed: directional use turns the
-forward roll towards travel. The converter is in `tools/retarget-knight.py`.
+shield. This v15 library is retained as the reproducible seed. The converter
+is in `tools/retarget-knight.py`.
+
+`knight-motion-v16.glb` retains those 19 clips and adds project-authored
+derivatives of the Roll: an early knee tuck, lower shoulder roll, protected
+head, timed rear roll and lateral turning rolls. The lateral derivatives turn
+the equipped forward pose while the feet are free, then restore the original
+facing before support; they are not independent side-roll motion capture.
+The derivation is in `tools/derive-knight-rolls.py`.
+
+`knight-footwork-v16.glb` contains project-authored left/right step-together
+and backward foot trajectories, solved against the existing fixed-length leg
+chains and the common sword/shield carry. They are authored animation rather
+than motion capture. `tools/bake-armed-footwork.cjs` builds these three clips.
+Native travel, sole contact timing and recovery support are retained in
+animation metadata for the shared runtime and development review page.

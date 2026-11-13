@@ -111,3 +111,14 @@ test('reverse hysteresis prevents phase-direction chatter near the backward late
  const right=driver.update({dt:1/60,speed:1.85,moveX:1.85,moveZ:0});
  assert.equal(right.reverse,false);for(const side of ['left','right'])assert.equal(right.feet[side].lockedCandidate,false,'an abrupt turn cannot inherit an old world foot pin');
 });
+
+test('roll landing follows source recovery support once, independently of playback cadence and paused sampling',()=>{
+ const sources=actor.motionClips.filter(c=>/^Knight_Roll(?:_Back|_Left|_Right)?$/.test(c.name));assert.equal(sources.length,4);
+ for(const source of sources)for(const hz of [20,30,60,120]){
+  const support=source.userData.root_motion.recovery_support_start,driver=AshenLocomotion.create(actor,T),events=[];
+  assert.ok(support>.2&&support<source.duration-.3,'landing must describe actual support before the action ends');
+  for(let time=0;time<=source.duration+1/hz;time+=1/hz){const frame=driver.update({dt:1/hz,speed:0,enabled:false,action:{clip:source.name,time}});for(const e of frame.actionLandings)events.push({event:e,time});assert.equal(driver.update({dt:0,speed:0,enabled:false,action:{clip:source.name,time}}).actionLandings.length,0);}
+  assert.equal(events.length,1,source.name+' duplicated or omitted its recovery contact at '+hz+'Hz');assert.equal(events[0].event.nativeTime,support);assert.ok(events[0].time>=support-1e-8&&events[0].time<support+1/hz+1e-8);
+  const idle=driver.update({dt:1/hz,speed:0,enabled:true});assert.equal(idle.actionLandings.length,0,'returning to idle cannot invent a second landing');
+ }
+});

@@ -487,9 +487,11 @@ class ArmedRoll:
                                 'inverse': np.asarray([matrix_gltf(m) for m in body['inverse_bind_matrices']], dtype=np.float64),
                                 'unbind': np.linalg.inv(bind)})
 
-    def adapt(self, values, t, duration):
+    def adapt(self, values, t, duration, weight_override=None):
         result = [[p.copy(), q.copy(), s.copy()] for p, q, s in values]
         weight = smoothstep(t / .24) * (1 - smoothstep((t - .96) / max(.05, duration - .96 - .08)))
+        if weight_override is not None:
+            weight = weight_override
         if weight < 1e-8:
             return result, weight
         world = world_from_trs(self.target, values)
@@ -666,6 +668,191 @@ class ArmedRoll:
                             'body_triangle_crossings': intersections, 'suspect_inside_samples': suspect_inside,
                             'max_suspect_inside_distance_m': max_inside, 'intersecting_parts': intersecting_parts}
         return report
+
+
+def curve_value(t, keys):
+    for (a, x), (b, y) in zip(keys, keys[1:]):
+        if t <= b:
+            u = max(0., min(1., (t - a) / (b - a)))
+            return x + (y - x) * u
+    return keys[-1][1]
+
+
+def knight_body(target, values, source_time, adapter):
+    """A compact shoulder roll, authored before the equipped arm solve.
+
+    This changes the source body deliberately. It is not a preservation claim:
+    the dive is shortened, legs close before turnover, the chin folds inward,
+    and the pelvis has a lower launch arc. No contact-driven global lift occurs.
+    """
+    result = [[p.copy(), q.copy(), s.copy()] for p, q, s in values]
+    scale = adapter.scale
+    world = world_from_trs(target, result)
+    pos = lambda n: position(world, target, n)
+    up = (pos('spine1') - pos('pelvis')).normalized()
+    right = (pos('thigh_R') - pos('thigh_L')).normalized()
+    right = (right - up * right.dot(up)).normalized()
+    forward = up.cross(right).normalized()
+    turn_weight = smoothstep((source_time - .10) / .16) * (1 - smoothstep((source_time - .65) / .20))
+    # Left shoulder leads; this is a small anatomical bank, not an extra tumble.
+    pelvis_i = target.by_name['pelvis']
+    parent = target.parent.get(pelvis_i)
+    parent_q = world[parent].to_quaternion().normalized() if parent is not None else Quaternion()
+    tilted = Quaternion(forward, -.80 * turn_weight) @ world[pelvis_i].to_quaternion().normalized()
+    result[pelvis_i][1] = (parent_q.inverted() @ tilted).normalized()
+    low_arc = smoothstep((source_time - .10) / .12) * (1 - smoothstep((source_time - .30) / .16))
+    result[pelvis_i][0].y -= .50 / scale * low_arc
+    world = world_from_trs(target, result)
+    pos = lambda n: position(world, target, n)
+    up = (pos('spine1') - pos('pelvis')).normalized()
+    right = (pos('thigh_R') - pos('thigh_L')).normalized()
+    right = (right - up * right.dot(up)).normalized()
+    forward = up.cross(right).normalized()
+    fold = smoothstep((source_time - .08) / .14) * (1 - smoothstep((source_time - .62) / .18))
+    for side in ['L', 'R']:
+        upper_name, knee_name, foot_name = f'thigh_{side}', f'shin_{side}', f'foot_{side}'
+        ui, ki, fi = [target.by_name[n] for n in [upper_name, knee_name, foot_name]]
+        hip, knee, foot = [position(world, target, n) for n in [upper_name, knee_name, foot_name]]
+        a, b = (knee - hip).length, (foot - knee).length
+        target_foot = hip - up * (.29 / scale) - forward * (.08 / scale)
+        along = target_foot - hip
+        distance = max(abs(a - b) + .005, min(a + b - .005, along.length))
+        along.normalize()
+        pole = hip + forward * (.60 / scale) - up * (.12 / scale)
+        bend = pole - hip
+        bend -= along * bend.dot(along)
+        bend.normalize()
+        cosine = max(-1., min(1., (a * a + distance * distance - b * b) / (2 * a * distance)))
+        wanted_knee = hip + along * (a * cosine) + bend * (a * math.sqrt(max(0., 1 - cosine * cosine)))
+        upper_q = ((knee - hip).rotation_difference(wanted_knee - hip)
+                   @ world[ui].to_quaternion().normalized()).normalized()
+        # Preserve the source boot orientation in world space while closing the
+        # knee; only the hinge chain changes, never bone translations/lengths.
+        lower_q = ((foot - knee).rotation_difference(target_foot - wanted_knee)
+                   @ world[ki].to_quaternion().normalized()).normalized()
+        parent_q = world[target.parent[ui]].to_quaternion().normalized()
+        local = {ui: (parent_q.inverted() @ upper_q).normalized(),
+                 ki: (upper_q.inverted() @ lower_q).normalized(),
+                 fi: (lower_q.inverted() @ world[fi].to_quaternion().normalized()).normalized()}
+        for index, wanted in local.items():
+            result[index][1] = result[index][1].slerp(wanted, fold).normalized()
+    # Tuck the helmet towards the torso rather than leaving its crown extended
+    # along the source diving axis. Two modest cervical rotations share the load.
+    tuck = smoothstep((source_time - .20) / .12) * (1 - smoothstep((source_time - .65) / .18))
+    for name, maximum in [('neck', .32), ('head', .38)]:
+        world = world_from_trs(target, result)
+        index = target.by_name[name]
+        pivot = world[index].translation
+        want = world[target.by_name['pelvis']].translation - pivot
+        old_q = world[index].to_quaternion().normalized()
+        old_up = old_q @ Vector((0, 1, 0))
+        if want.length > .05:
+            delta = old_up.rotation_difference(want.normalized())
+            angle = delta.angle
+            if angle > 1e-5:
+                delta = Quaternion().slerp(delta, min(1., maximum * tuck / angle))
+                parent_q = world[target.parent[index]].to_quaternion().normalized()
+                result[index][1] = (parent_q.inverted() @ delta @ old_q).normalized()
+    return result, fold
+
+
+def bake_knight_roll(target, baseline, output, fps, equipment_path, audit=False):
+    """Append a reviewable body-authored variant without replacing the v15 data."""
+    seed = baseline.animation('Roll')
+    duration = 1.4
+    source_duration = seed.get('extras', {}).get('native_duration', 1.4666667)
+    writer = Writer([], [])
+    writer.doc = copy.deepcopy(baseline.doc)
+    writer.binary = bytearray(baseline.bin)
+    adapter = ArmedRoll(target, equipment_path)
+    frames = []
+    times = [i / fps for i in range(math.ceil(duration * fps)) if i / fps < duration - 1e-8] + [duration]
+    source_keys = [(0., 0.), (.12, .06), (.25, .38), (.43, .50), (.64, .65), (.80, .82), (1.05, 1.10), (duration, source_duration)]
+    body_metrics = []
+    region_names = []
+    for body in adapter.bodies:
+        region_names.extend(body['names'][int(indices[int(np.argmax(weights))])] for indices, weights in zip(body['indices'], body['weights']))
+    head_region = np.asarray([name == 'head' for name in region_names])
+    shoulder_region = np.asarray([name == 'clavicle_L' for name in region_names])
+    feet_regions = {side: np.asarray([name in {f'foot_{side}', f'toe_{side}'} for name in region_names]) for side in ['L', 'R']}
+    for t in times:
+        st = curve_value(t, source_keys)
+        local, _ = baseline.evaluate(seed, st)
+        values = [[p.copy(), q.copy(), s.copy()] for p, q, s in target.rest]
+        for name in MAPPING:
+            values[target.by_name[name]] = [v.copy() for v in local[baseline.by_name[name]]]
+        values, fold = knight_body(target, values, st, adapter)
+        arm_weight = smoothstep(t / .16) * (1 - smoothstep((t - .92) / .40))
+        values, _ = adapter.adapt(values, t, duration, arm_weight)
+        frames.append((t, values, arm_weight))
+        world = world_from_trs(target, values)
+        points, _ = adapter.skin(world)
+        cloud = np.asarray(points)
+        body_metrics.append({'time': t, 'source_time': st, 'knee_fold_weight': fold,
+                             'weighted_min_y_m': adapter.scale * (float(cloud[:, 1].min()) - adapter.floor),
+                             'weighted_max_y_m': adapter.scale * (float(cloud[:, 1].max()) - adapter.floor),
+                             'helmet_min_y_m': adapter.scale * (float(cloud[head_region, 1].min()) - adapter.floor),
+                             'left_shoulder_min_y_m': adapter.scale * (float(cloud[shoulder_region, 1].min()) - adapter.floor) if np.any(shoulder_region) else None,
+                             'head_y_m': adapter.scale * (position(world, target, 'head').y - adapter.floor),
+                             'hips_y_m': adapter.scale * (position(world, target, 'pelvis').y - adapter.floor),
+                             'feet': {side: {'min_y_m': adapter.scale * (float(cloud[mask, 1].min()) - adapter.floor),
+                                             'centroid_x_m': adapter.scale * float(cloud[mask, 0].mean()),
+                                             'centroid_z_m': adapter.scale * float(cloud[mask, 2].mean())}
+                                      for side, mask in feet_regions.items()}})
+    adapter.smooth_arms(frames)
+    ti = writer.add([[t] for t in times], 'SCALAR', bounds=True)
+    samplers, channels = [], []
+    for name in MAPPING:
+        quats = []
+        for _, values, _ in frames:
+            row = quat_values(values[target.by_name[name]][1])
+            if quats and sum(a * b for a, b in zip(row, quats[-1])) < 0:
+                row = [-x for x in row]
+            quats.append(row)
+        samplers.append({'input': ti, 'output': writer.add(quats, 'VEC4'), 'interpolation': 'LINEAR'})
+        channels.append({'sampler': len(samplers) - 1, 'target': {'node': baseline.by_name[name], 'path': 'rotation'}})
+    translations = [list(values[target.by_name['pelvis']][0]) for _, values, _ in frames]
+    samplers.append({'input': ti, 'output': writer.add(translations, 'VEC3', bounds=True), 'interpolation': 'LINEAR'})
+    channels.append({'sampler': len(samplers) - 1, 'target': {'node': baseline.by_name['pelvis'], 'path': 'translation'}})
+    # Travel follows the new action phases, with a quiet preparation and stop
+    # before the final standing recovery. The game must consume it via navigation.
+    support_start = .80
+    foot_z = lambda f: f['feet']['L']['centroid_z_m']
+    foot_x = lambda f: f['feet']['L']['centroid_x_m']
+    support = min(body_metrics, key=lambda f: abs(f['time'] - support_start))
+    reference_z = foot_z(body_metrics[-1])
+    reference_x = foot_x(body_metrics[-1])
+    support_root = 3.3 + reference_z - foot_z(support)
+    support_x = reference_x - foot_x(support)
+    root_keys = [(0., 0.), (.12, .08), (.25, .58), (.43, 1.47), (.64, 2.45), (support_start, support_root)]
+    samples, previous_z = [], 0.
+    for t, body in zip(times, body_metrics):
+        z = curve_value(t, root_keys) if t < support_start else 3.3 + reference_z - foot_z(body)
+        z = min(3.3, max(previous_z, z))
+        x = support_x * smoothstep(t / support_start) if t < support_start else reference_x - foot_x(body)
+        samples.append([t, x, 0., z])
+        previous_z = z
+    horizontal_path = sum(math.hypot(b[1] - a[1], b[3] - a[3]) for a, b in zip(samples, samples[1:]))
+    extras = {'source_library': 'UAL1 with project body authoring', 'source_animation': 'Roll', 'native_duration': duration,
+              'root_motion': {'duration': duration, 'displacement': [0., 0., 3.3], 'horizontal_path_m': horizontal_path,
+                              'samples': samples, 'units': 'production-world meters; authored phase trajectory',
+                              'recovery_support_start': support_start,
+                              'recovery_method': 'left support-foot centroid held in XZ by measured source-relative translation; 3.3m forward endpoint'},
+              'adaptation': {'name': 'compact knight shoulder roll', 'body_authored': True,
+                             'changed_bones': ['pelvis', 'thigh_L', 'shin_L', 'foot_L', 'thigh_R', 'shin_R', 'foot_R', 'neck', 'head', *sorted(ArmedRoll.ARM_BONES)],
+                             'whole_body_contact_lift_applied': False, 'equipment_hidden': False,
+                             'visual_acceptance': 'pending actual production mesh review'}}
+    writer.doc['animations'] = [a for a in writer.doc['animations'] if a['name'] != 'Knight_Roll']
+    writer.doc['animations'].append({'name': 'Knight_Roll', 'samplers': samplers, 'channels': channels, 'extras': extras})
+    writer.save(output)
+    evidence = {'output': str(output.relative_to(ROOT)), 'sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
+                'source_sha256': baseline.sha256, 'duration': duration, 'body_authored_before_arms': True,
+                'raw_ground_reference_y': 0, 'runtime_ground_correction_applied': False,
+                'body_metrics': body_metrics, 'equipment_frames': []}
+    if audit:
+        evidence['equipment_frames'] = [adapter.audit(values, t, w) for t, values, w in frames]
+    (WORK / 'KNIGHT_ROLL_V16.json').write_text(json.dumps(evidence, indent=2), encoding='utf-8')
+    print(json.dumps({k: v for k, v in evidence.items() if k not in ['body_metrics', 'equipment_frames']}))
 
 
 def phase_hints(clip, times):
@@ -890,13 +1077,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--inspect', action='store_true')
     parser.add_argument('--fps', type=int, default=60)
-    parser.add_argument('--output', type=Path, default=ROOT / 'assets/knight-motion-v15.glb')
+    parser.add_argument('--output', type=Path, default=None)
+    parser.add_argument('--knight-roll', action='store_true', help='Append the body-authored Knight_Roll to the frozen v15 library')
+    parser.add_argument('--audit', action='store_true', help='Run the full offline mesh/gear audit after visual preflight')
     parser.add_argument('--equipment', type=Path, default=None,
                         help='Optional explicit immutable geometry snapshot; default captures current production mesh automatically')
     options = parser.parse_args(args)
-    ensure_sources()
+    if not options.knight_roll:
+        ensure_sources()
     target = GLB(ROOT / 'assets/knight-v11.glb')
-    sources = {key: GLB(path) for key, path in SOURCES.items()}
+    sources = {key: GLB(path) for key, path in SOURCES.items()} if not options.knight_roll else {}
     if options.inspect:
         inspect(target, sources)
     else:
@@ -908,7 +1098,11 @@ def main():
             subprocess.run(['node', str(ROOT / 'tools/export-equipment-binding.cjs')], cwd=ROOT, check=True)
         if not equipment.exists():
             parser.error('The explicit equipment snapshot does not exist')
-        bake(target, sources, options.output.resolve(), options.fps, equipment)
+        if options.knight_roll:
+            output = options.output or ROOT / 'assets/knight-motion-v16.glb'
+            bake_knight_roll(target, GLB(ROOT / 'assets/knight-motion-v15.glb'), output.resolve(), options.fps, equipment, options.audit)
+        else:
+            bake(target, sources, (options.output or ROOT / 'assets/knight-motion-v15.glb').resolve(), options.fps, equipment)
 
 
 if __name__ == '__main__':

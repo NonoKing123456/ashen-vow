@@ -13,12 +13,37 @@ test('optimized production GLB retains its weighted mesh and authored source cli
  assert.ok(meta.meshes.some(m=>m.skinned));assert.ok(fs.statSync(path.join(__dirname,'assets/knight-v11.glb')).size<3500000);
 });
 test('production motion metadata survives r128 loading and the roll trajectory is independent of sampling rate',()=>{
- const roll=C.getMove('roll'),clip=actor.motionClips.find(c=>c.name==='Armed_Roll');
- assert.ok(clip?.userData?.root_motion?.samples.length>60,'a missing extras payload would leave gameplay sliding independently of the pose');
- assert.ok(Math.abs(clip.duration-roll.total)<.001,'the controller must preserve the complete roll instead of compressing it to the old dodge');
- const initial=actor.root.position.clone();
- for(const hz of [20,30,60,120]){let x=0,z=0;for(let at=0;at<roll.total;){const end=Math.min(roll.total,at+1/hz),delta=actor.actionRootDelta(roll,at,end);assert.ok(Number.isFinite(delta.x)&&Number.isFinite(delta.z));x+=delta.x;z+=delta.z;at=end;}assert.ok(Math.abs(x)<.001&&Math.abs(z-roll.lunge)<.001,'scaled authored root travel drifted at '+hz+'Hz');}
+ const base=C.getMove('roll'),initial=actor.root.position.clone(),orientation=actor.root.quaternion.clone();assert.equal(base.nativeRootMotion,true);
+ for(const [name,direction]of [['Knight_Roll',[0,0,1]],['Knight_Roll_Back',[0,0,-1]],['Knight_Roll_Left',[1,0,0]],['Knight_Roll_Right',[-1,0,0]]]){
+  const clip=actor.motionClips.find(c=>c.name===name),meta=clip?.userData?.root_motion;assert.ok(meta?.samples.length>60,'missing native directional source or root metadata: '+name);
+  assert.ok(Math.abs(clip.duration-base.total)<.001,'the controller must preserve the complete roll instead of compressing it to the old dodge');
+  const d=meta.displacement;assert.ok(Array.isArray(d)&&d.length===3&&d.every(Number.isFinite),'native displacement must remain explicit');assert.ok(meta.horizontal_path_m>=Math.hypot(d[0],d[2])-.001,'root path length cannot be substituted for net displacement');
+  const heading=new T.Vector3(d[0],0,d[2]).normalize();assert.ok(heading.dot(new T.Vector3(...direction))>.999,'a named cardinal source has the wrong native travel direction');
+  const first=sourceRoot(clip,0),last=sourceRoot(clip,clip.duration).sub(first);assert.ok(Math.hypot(last.x-d[0],last.z-d[2])<.001,'native samples and displacement metadata disagree');
+  for(const yaw of [0,Math.PI/2,-.73]){
+   const world=new T.Vector3(...direction).applyAxisAngle(new T.Vector3(0,1,0),yaw),roll=actor.planRoll(base,world,yaw);assert.equal(roll.animation.clip,name,'world input selected the wrong cardinal source');assert.ok(Math.abs(roll.rollPlan.residualYaw)<.001,'cardinal travel must not be disguised as a rotated forward roll');
+   assertSamplingRates(roll,at=>sourceRoot(clip,at/roll.total*clip.duration).sub(first));
+  }
+ }
  assert.ok(actor.root.position.equals(initial),'sampling a trajectory must not mutate the gameplay root');
+ assert.ok(actor.root.quaternion.angleTo(orientation)<1e-6,'planning a roll must not change the gameplay facing');
+});
+function sourceRoot(clip,time){const samples=clip.userData.root_motion.samples;let i=0;while(i<samples.length-2&&samples[i+1][0]<time)i++;const a=samples[i],b=samples[Math.min(i+1,samples.length-1)],u=Math.max(0,Math.min(1,(time-a[0])/Math.max(1e-8,b[0]-a[0])));return new T.Vector3(a[1]+(b[1]-a[1])*u,0,a[3]+(b[3]-a[3])*u);}
+function assertSamplingRates(roll,expectedAt){
+ for(const hz of [20,30,60,120]){let at=0,x=0,z=0;for(let checkpoint=1;checkpoint<=14;checkpoint++){const target=roll.total*checkpoint/14;while(at<target-1e-9){const end=Math.min(target,at+1/hz),delta=actor.actionRootDelta(roll,at,end);assert.ok(Number.isFinite(delta.x)&&Number.isFinite(delta.z));x+=delta.x;z+=delta.z;at=end;}const expected=expectedAt(target);assert.ok(Math.hypot(x-expected.x,z-expected.z)<.001,'authored roll curve drifted at '+hz+'Hz, time '+target.toFixed(3));}}
+}
+test('all diagonal roll plans preserve requested direction, native range and sampling independence',t=>{
+ const observations=[];
+ for(const direction of [[1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1]])for(const yaw of [0,Math.PI/2]){
+  const local=new T.Vector3(...direction).normalize(),world=local.clone().applyAxisAngle(new T.Vector3(0,1,0),yaw),roll=actor.planRoll(C.getMove('roll'),world,yaw),clip=actor.motionClips.find(c=>c.name===roll.animation.clip),meta=clip.userData.root_motion;
+  const native=new T.Vector3(meta.displacement[0],0,meta.displacement[2]).normalize();assert.ok(native.dot(local)>=Math.SQRT1_2-.001,'a diagonal selected a source outside its adjacent cardinal sector');
+  assert.ok(Math.abs(roll.rollPlan.residualYaw)<=Math.PI/4+.001&&Math.abs(roll.rollPlan.residualYaw)>.01,'a diagonal silently lost its bounded source adaptation');
+  assert.ok(roll.rollPlan.freeTurnWindow?.[1]<=meta.recovery_support_start,'diagonal rotation overlaps the authored support recovery');
+  assertSamplingRates(roll,at=>actor.actionRootDelta(roll,0,at));
+  const end=actor.actionRootDelta(roll,0,roll.total),length=Math.hypot(end.x,end.z),nativeLength=Math.hypot(meta.displacement[0],meta.displacement[2]),angle=Math.acos(Math.max(-1,Math.min(1,(end.x*local.x+end.z*local.z)/length)))*180/Math.PI;
+  assert.ok(angle<=1,'planned roll missed its requested direction by '+angle.toFixed(3)+' degrees');assert.ok(Math.abs(length-nativeLength)<=.01,'direction adaptation changed the native net travel range');observations.push({direction,yaw,source:clip.name,endpoint:[end.x,end.z],angleErrorDegrees:angle,lengthError:Math.abs(length-nativeLength)});
+ }
+ t.diagnostic(JSON.stringify(observations));
 });
 function contact(knight,move,distance,height=1.9,combat=false){
  let previous=null,hit=false;knight.root.position.set(0,0,0);

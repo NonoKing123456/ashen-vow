@@ -6,13 +6,29 @@ T.TextureLoader.prototype.load=function(u,f){const t=new T.Texture();queueMicrot
 T.GLTFLoader.prototype.load=function(u,f,p,e){const b=fs.readFileSync(u);this.parse(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'',f,e)};
 test.before(async()=>AshenCharacters.load({THREE:T,url:'assets/knight-v11.glb'}));
 const vertex=new T.Vector3();
+const rollCases=[
+ ['forward roll',[0,0,1],'Knight_Roll'],
+ ['backward roll',[0,0,-1],'Knight_Roll_Back'],
+ ['left roll',[1,0,0],'Knight_Roll_Left'],
+ ['right roll',[-1,0,0],'Knight_Roll_Right'],
+ ['forward diagonal roll',[.6,0,.8],'Knight_Roll'],
+ ['backward diagonal roll',[-.6,0,-.8],'Knight_Roll_Back']
+];
+function plannedRoll(actor,localDirection,expectedSource){
+ const worldDirection=new T.Vector3(...localDirection).normalize().applyAxisAngle(new T.Vector3(0,1,0),actor.root.rotation.y);
+ const move=actor.planRoll(C.getMove('roll'),worldDirection,actor.root.rotation.y);
+ assert.ok(move.rollPlan,'the directional evasion was not planned');
+ assert.equal(move.animation.clip,expectedSource,'the fixture selected the wrong native roll source');
+ return move;
+}
 function rigidMinimum(root){let min=Infinity;root.updateWorldMatrix(true,true);root.traverse(mesh=>{if(!mesh.isMesh||!mesh.visible)return;const p=mesh.geometry.attributes.position;for(let i=0;i<p.count;i++){vertex.fromBufferAttribute(p,i).applyMatrix4(mesh.matrixWorld);min=Math.min(min,vertex.y);}});return min;}
-for(const mode of ['idle','walk','run','back','side','guard','light','heavy','roll','heal','hurt','dead'])test('actual '+mode+' keeps feet, blade and cloth above the shared floor',()=>{
+for(const mode of ['idle','walk','run','back','side','guard','light','heavy',...rollCases.map(c=>c[0]),'heal','hurt','dead'])test('actual '+mode+' keeps feet, blade and cloth above the shared floor',()=>{
  const a=AshenCharacters.createKnight({THREE:T,scene:new T.Scene()});let feet=100,blade=100,shield=100,cape=100,flask=100;
- const move=mode==='roll'?C.getMove('roll'):['light','heavy'].includes(mode)?C.getMove(mode):null;
+ const roll=rollCases.find(c=>c[0]===mode),move=roll?plannedRoll(a,roll[1],roll[2]):['light','heavy'].includes(mode)?C.getMove(mode):null;
  for(let i=0;i<100;i++){
-  const t=i/60,state=['dead','hurt','heal','roll'].includes(mode)?mode:move?'attack':'idle',speed=['walk','back','side'].includes(mode)?1.85:mode==='run'?4.4:0;
-  a.animate({state,time:move?Math.min(t,move.total):t,t,dt:1/60,speed,moveX:mode==='side'?speed:0,moveZ:mode==='back'?-speed:mode==='side'?0:speed,guarding:mode==='guard',combat:mode==='guard'||!!move,attack:move,dead:mode==='dead',rollDir:new T.Vector3(0,0,1)});
+  const t=i/60,state=roll?'roll':['dead','hurt','heal'].includes(mode)?mode:move?'attack':'idle',speed=['walk','back','side'].includes(mode)?1.85:mode==='run'?4.4:0;
+  a.animate({state,time:move?Math.min(t,move.total):t,t,dt:1/60,speed,moveX:mode==='side'?speed:0,moveZ:mode==='back'?-speed:mode==='side'?0:speed,guarding:mode==='guard',combat:mode==='guard'||!!move,attack:move,dead:mode==='dead'});
+  if(roll){assert.equal(a.motionFrame.source,roll[2]);assert.equal(a.weapon.group.visible,true);assert.equal(a.shield.visible,true,'the floor fixture must keep the solid shield equipped');assert.equal(a.cape.visible,true);}
   const f=a.footBounds();feet=Math.min(feet,f.left.min,f.right.min);blade=Math.min(blade,rigidMinimum(a.weapon.group));cape=Math.min(cape,rigidMinimum(a.cape));if(a.flask)flask=Math.min(flask,rigidMinimum(a.flask));if(a.shield?.visible)shield=Math.min(shield,rigidMinimum(a.shield));
  }
  assert.ok(feet>-.003,JSON.stringify({feet,blade,shield,cape}));assert.ok(cape>.012,JSON.stringify({feet,blade,shield,cape}));
@@ -30,15 +46,17 @@ function crosses(surface,from,to,filter){
  for(const s of surface)for(let i=0;i<s.count;i+=3){const ids=[s.index(i),s.index(i+1),s.index(i+2)];if(ids.filter(j=>filter.test(s.joints[j])).length<2)continue;const a=s.points[ids[0]],b=s.points[ids[1]],c=s.points[ids[2]];if(ray.intersectTriangle(a,b,c,false,hit)&&hit.distanceTo(from)<length-.0005)return s.joints[ids[0]];}
  return null;
 }
-for(const [name,dir,times]of [['forward roll',[0,0,1],[.21,.35,.56]],['side roll',[1,0,0],[.21,.35,.567]],['fallen',[0,0,1],[.50,.75,1.0]],['light',[0,0,1],[.09,.20,.35,.60]],['heavy',[0,0,1],[.25,.53,.85,1.12]],['critical',[0,0,1],[.15,.34,.62,1.12]]])test('real weighted '+name+' separates the held steel from its own body',()=>{
- const a=AshenCharacters.createKnight({THREE:T,scene:new T.Scene()}),dead=name==='fallen',rolling=name.includes('roll'),move=C.getMove(rolling?'roll':dead?'roll':name);
+for(const [name,dir,times,expectedSource]of [...rollCases.map(([name,dir,source])=>[name,dir,[.10,.21,.35,.56,.73,.95,1.20,1.40],source]),['fallen',[0,0,1],[.50,.75,1.0]],['light',[0,0,1],[.09,.20,.35,.60]],['heavy',[0,0,1],[.25,.53,.85,1.12]],['critical',[0,0,1],[.15,.34,.62,1.12]]])test('real weighted '+name+' separates the held steel from its own body',()=>{
+ const a=AshenCharacters.createKnight({THREE:T,scene:new T.Scene()}),dead=name==='fallen',rolling=!!expectedSource,move=rolling?plannedRoll(a,dir,expectedSource):C.getMove(dead?'roll':name);
  for(let i=0;i<45;i++)a.animate({state:'idle',time:i/60,dt:1/60,t:i/60,speed:0});let next=0;
- for(let i=0;i<150&&next<times.length;i++){
-  const time=i/120;a.animate({state:dead?'dead':rolling?'roll':'attack',dead,combat:!rolling,attack:dead?null:move,time,dt:1/120,t:time,speed:0,rollDir:new T.Vector3(...dir)});if(time+1e-5<times[next])continue;next++;
+ for(let i=0;i<=Math.ceil(Math.max(...times)*120)&&next<times.length;i++){
+  const time=i/120;a.animate({state:dead?'dead':rolling?'roll':'attack',dead,combat:!rolling,attack:dead?null:move,time,dt:1/120,t:time,speed:0});if(time+1e-5<times[next])continue;next++;
+  if(rolling){assert.equal(a.motionFrame.source,expectedSource);assert.equal(a.weapon.group.visible,true);assert.equal(a.shield.visible,true,'the crossing fixture must keep the solid shield equipped');}
   const surface=weightedSurface(a),base=a.weapon.group.localToWorld(a.weapon.base.clone()),tip=a.weapon.group.localToWorld(a.weapon.tip.clone());
   assert.equal(crosses(surface,base,tip,/thigh|shin|pelvis|spine|chest|head/i),null,'the blade cuts a weighted body surface at '+time);
   if(a.shield?.visible){const back=a.shield.userData.structure.backPlane;for(const x of [-.20,-.10,0,.10,.20])for(const y of [-.20,-.08,.05,.18,.30]){if((x/.286)**2+((y-.05)/.337)**2>.82)continue;const from=a.shield.localToWorld(new T.Vector3(x,y,back+.002)),to=a.shield.localToWorld(new T.Vector3(x,y,back+.034));assert.equal(crosses(surface,from,to,/thigh|shin|pelvis|spine|chest|head|forearm|upperarm/i),null,'the solid shield slices a weighted limb at '+time);}}
  }
+ assert.equal(next,times.length,'the fixture skipped an authored contact or recovery sample');
 });
 
 for(const mode of ['idle','guard','attack'])test('wall-aware '+mode+' keeps the real held geometry inside a narrow corner',()=>{
@@ -66,10 +84,12 @@ test('every authored strike returns to the same combat grip without a wrist flip
   const after=a.weapon.group.getWorldQuaternion(new T.Quaternion());assert.ok(before.angleTo(after)<.15,kind+' snaps its wrist on recovery');assert.ok(grip.distanceTo(a.weapon.group.getWorldPosition(new T.Vector3()))<.08,kind+' jumps its palm on recovery');
  }
 });
-for(const [name,yaw,direction]of [['forward evasion',0,[0,0,1]],['lateral evasion',0,[1,0,0]],['backward evasion',Math.PI/2,[-1,0,0]],['fallen',0,[0,0,1]],['fallen turned',Math.PI/2,[0,0,1]]])test('final production '+name+' respects the corner throughout its actual pose',()=>{
- const a=AshenCharacters.createKnight({THREE:T,scene:new T.Scene()}),e={x:0,z:0,radius:.46},obstacles=[{x:0,z:.51,w:5,d:.1,h:3},{x:.51,z:0,w:.1,d:5,h:3}],bounds=[{x:0,z:0,w:20,d:20}],dead=name.startsWith('fallen'),move=C.getMove('roll');a.root.rotation.y=yaw;
+for(const [name,yaw,direction,expectedSource]of [...rollCases.map(([name,dir,source],i)=>[name,i%2?Math.PI/2:0,dir,source]),['fallen',0,[0,0,1]],['fallen turned',Math.PI/2,[0,0,1]]])test('final production '+name+' respects the corner throughout its actual pose',()=>{
+ const a=AshenCharacters.createKnight({THREE:T,scene:new T.Scene()}),e={x:0,z:0,radius:.46},obstacles=[{x:0,z:.51,w:5,d:.1,h:3},{x:.51,z:0,w:.1,d:5,h:3}],bounds=[{x:0,z:0,w:20,d:20}],dead=name.startsWith('fallen');a.root.rotation.y=yaw;
+ const move=dead?null:plannedRoll(a,direction,expectedSource);
  for(let i=0;i<=Math.ceil((dead?2.4:move.total)*120);i++){
-  const time=i/120;a.animate({state:dead?'dead':'roll',dead,attack:dead?null:move,time,t:time,dt:1/120,speed:0,rollDir:new T.Vector3(...direction),obstacles});
+  const time=i/120;a.animate({state:dead?'dead':'roll',dead,attack:move,time,t:time,dt:1/120,speed:0,obstacles});
+  if(!dead)assert.equal(a.motionFrame.source,expectedSource);
   const fit=AshenNavigation.fitPose(e,a.contactPoints,{bounds,obstacles,player:e});assert.equal(fit.resolved,true,'a feasible pose was not separated from the wall');a.root.position.set(e.x,0,e.z);a.updateEquipment();
   for(const p of a.skinContactPoints())assert.ok(p.x<.46&&p.z<.46,'a body probe crossed the wall');
   if(i%10!==0)continue;

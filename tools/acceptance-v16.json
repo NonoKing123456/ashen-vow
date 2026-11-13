@@ -1,0 +1,212 @@
+{
+  "status": "Verified v16 source snapshot; publication is recorded separately",
+  "completed_at_utc": "2026-11-13T16:15:19.361Z",
+  "local_date": "2026-11-14",
+  "automated": {
+    "command": "npm test",
+    "passed": 228,
+    "failed": 0,
+    "duration_ms": 86442.1451,
+    "production_flow": {
+      "frames": 5957,
+      "wallMs": 85749,
+      "hp": 75,
+      "flasks": 4,
+      "stats": {
+        "parries": 4,
+        "rolls": 1,
+        "executions": 2,
+        "damageTaken": 57,
+        "damageDealt": 496,
+        "deaths": 0,
+        "heals": 0,
+        "kills": 3
+      },
+      "method": "Read-only state observation and public inputs; production GLB, navigation, equipment, level and game logic; rendering/audio devices omitted"
+    }
+  },
+  "visual": {
+    "production_neutral_three_views": true,
+    "actions": [
+      "idle",
+      "walk",
+      "run",
+      "backward",
+      "left",
+      "right",
+      "four movement diagonals",
+      "guard",
+      "light A/B/finisher",
+      "heavy",
+      "critical",
+      "heal",
+      "hurt",
+      "death",
+      "forward/back/left/right rolls",
+      "diagonal rolls",
+      "wall-facing roll",
+      "side-wall-facing roll",
+      "corner-facing roll",
+      "boss heavy"
+    ],
+    "method": "Visible review UI exports; same source blending, navigation and contacts; fixed 120Hz sequence rendering, not performance video",
+    "real_night_smoke": {
+      "public_keyboard_inputs": true,
+      "first_guard_defeated": true,
+      "hp": 114,
+      "rolls_observed_in_journal": 3,
+      "checked": [
+        "movement",
+        "lock",
+        "guard",
+        "heavy-to-guard",
+        "light contact",
+        "backward roll",
+        "side roll input",
+        "roll-to-walk",
+        "journal open/close",
+        "pause handoff"
+      ],
+      "idle_death_before_retry": true,
+      "human_full_campaign_clear": false,
+      "final_state": "paused"
+    },
+    "representative_screenshots": [
+      "docs/qa/v16/side-step.png",
+      "docs/qa/v16/back-roll.png",
+      "docs/qa/v16/corner-roll.png",
+      "docs/qa/v16/night-level.png"
+    ]
+  },
+  "footwork": {
+    "stable_support_drift_observed_m": [
+      0.005,
+      0.008
+    ],
+    "reversal": {
+      "generated_at": "2026-11-13T15:56:01.600Z",
+      "peak_step_m": 0.08786602893002808,
+      "steady_source_peak_m": 0.07794534134230083,
+      "extra_step_m": 0.009920687587727253
+    },
+    "release_source_relative_removal_peak_m": 0.01238
+  },
+  "roll": {
+    "native_duration_s": 1.4,
+    "recovery_support_native_s": 0.8,
+    "side_method": "Lateral turning shoulder-roll derivative with a measured free-foot window; not independent barrel-roll capture",
+    "diagonal_method": "Bounded pose yaw plus a smooth endpoint correction accumulated only while both feet are free; native preparation/support increments retained",
+    "observations": {
+      "generatedAt": "2026-11-13T15:55:47.242Z",
+      "observations": [
+        {
+          "direction": "forward-left",
+          "source": "Knight_Roll_Left",
+          "maximumSpeed": 7.679693300726947,
+          "maximumSpeedAt": 0.38749999340091434,
+          "maximumVelocityStep": 8.8200026770856,
+          "maximumVelocityStepAt": 0.8041666529717899,
+          "maximumNativeSpeed": 7.414233229863889,
+          "maximumNativeVelocityStep": 8.819988107321885,
+          "maximumCorrectionSpeed": 4.511563964501744,
+          "maximumCorrectionVelocityStep": 0.34667305865718984,
+          "minimumFreeSole": 0.3459860696030254,
+          "correctedFrames": 50
+        },
+        {
+          "direction": "forward-right",
+          "source": "Knight_Roll",
+          "maximumSpeed": 8.130796942699867,
+          "maximumSpeedAt": 0.39583332659233184,
+          "maximumVelocityStep": 4.097947978456824,
+          "maximumVelocityStepAt": 0.8041666529717899,
+          "maximumNativeSpeed": 7.414225137465754,
+          "maximumNativeVelocityStep": 4.097941209055891,
+          "maximumCorrectionSpeed": 4.928980263430764,
+          "maximumCorrectionVelocityStep": 0.37874772272048146,
+          "minimumFreeSole": 0.34611056534649115,
+          "correctedFrames": 50
+        },
+        {
+          "direction": "back-left",
+          "source": "Knight_Roll_Left",
+          "maximumSpeed": 8.780006773033314,
+          "maximumSpeedAt": 0.39583332659233184,
+          "maximumVelocityStep": 8.8200026770856,
+          "maximumVelocityStepAt": 0.8041666529717899,
+          "maximumNativeSpeed": 7.414233229863889,
+          "maximumNativeVelocityStep": 8.819988107321885,
+          "maximumCorrectionSpeed": 4.457377443217437,
+          "maximumCorrectionVelocityStep": 0.34250929845863815,
+          "minimumFreeSole": 0.3459860696030255,
+          "correctedFrames": 50
+        },
+        {
+          "direction": "back-right",
+          "source": "Knight_Roll_Back",
+          "maximumSpeed": 11.381542211100388,
+          "maximumSpeedAt": 0.5124999912721769,
+          "maximumVelocityStep": 6.240217790458437,
+          "maximumVelocityStepAt": 0.18749999680689403,
+          "maximumNativeSpeed": 9.294101391928088,
+          "maximumNativeVelocityStep": 6.240215346242089,
+          "maximumCorrectionSpeed": 7.087729030426912,
+          "maximumCorrectionVelocityStep": 0.7445402349943036,
+          "minimumFreeSole": 0.4227050033739797,
+          "correctedFrames": 36
+        }
+      ]
+    }
+  },
+  "limits": [
+    "Authored side/back footwork and derived directional rolls are not independent eight-way motion capture.",
+    "Fast game-style rolls; observed back-right peak speed is about 11.38m/s. Native support/root transitions have visible deceleration; this is not heavy-armour physics simulation.",
+    "Sword source motions remain stylized. Healing uses a short body focus and flask/ember effects, without a dedicated bottle-drinking hand animation.",
+    "Simplified cloth contacts; sampled equipment/body checks and this level do not guarantee zero intersections on every pose or terrain.",
+    "Automated campaign completion and the browser smoke check are distinct; neither establishes universal human readability or cross-device performance."
+  ],
+  "source_lf_normalized_sha256": {
+    "animation.test.cjs": "456b8250d86556048c775649a3defedd0e537da5f4b5e43654b9a0377184ddfc",
+    "asset.test.cjs": "ec1d61379a208e08f3da504784bfdd175ab7e137ea12113c3716d73b6891ba66",
+    "assets/knight-footwork-v16.glb": "2ee9f8c5841a0b132e33dd3d4b3d7a5c4478418f670221d48b353a860b35b2a3",
+    "assets/knight-motion-v15.glb": "4fc1dacf6dfbb67417002d18fa44d3aad72377de3518a80cbb0383835737d001",
+    "assets/knight-motion-v16.glb": "fd2f58b7139cf9f8e8d902001ea620352adb64106eba4ca9212eab0cf20d5c70",
+    "assets/knight-v11.glb": "63d99f37f4fe002bf7093cd3ea1561e9bcc718862629afbdcaf3566e291d88d4",
+    "audio.js": "48604a1188d7fb65a5801ed83c90033daa49a5a847d3614e504396c540442c39",
+    "characters.js": "d32bd4e639b30240f05ac2c6754ea8c39006534525952a0fa08c8df8cdada25a",
+    "contact-integrity.test.cjs": "ef50f0218a1f3a36ed0bd9e31bcf28a9c767c100782a75d38b8ad14e8a0136d9",
+    "controls.js": "a23d5c275ed45586202581bc746b49eced8f51b57bcb84a1a382ac2f1d8be3f1",
+    "director.js": "f844e977bf01119b924dafd7b4cbc058cebb2a1ac28414c3784b1b3312a93956",
+    "equipment.test.cjs": "6d52c951d30ed489abac00e880f6b282c6654e2b2cffa46b897740f48823c5ab",
+    "feel.js": "774e40e44cd950e8bdfe9738c4a285e50ca72be70ce6bda409b5a062fd0f8c88",
+    "footwork.test.cjs": "0b87357eeca249c252b1308df9a7643d4a3241a188d80e1db755fae61ebf7a6a",
+    "game.js": "a97accad8561516ace6b1797ef9db964b84e2ad58ec5549440de5d8ab2b55e96",
+    "impact.js": "44cdc55d5ffdfc94ebb9bb9879ef7cad60c20b8c9cfee4e1703dfecc79f2de18",
+    "index.html": "b17f0207e567d3aa95a349df9b6f11290d29c2d86d59173faac15c0c0848da5a",
+    "journey.js": "7c3e72865ae1c96d7fefd44266fcbe7025d8da6378d974dc5676fccccb962047",
+    "level.js": "73671bb37fab89616a7c2bedd79db03181c4f349524195583438273398c1a4cf",
+    "locomotion.js": "baad7499c2a4863eed7de27c165f21adf9ae57c00313a742a97acc4dc221c480",
+    "locomotion.test.cjs": "37fcb4bff22cf38b7fbd49e9da866164fa7395494fe206e30027f89c8d599195",
+    "motion.js": "f4d87a38c5ab782e16b05d24d025a50a2867535160080740165f6ae8b5bad983",
+    "navigation.js": "6532f7fe7ec1de75977787c0ab8c8f2bf44f1d5bf7e1874b727b217eade3e669",
+    "next.css": "bed82d3c18523beee429b9b3eef0f83ec08be9d2e41f211c26b31b33b868ce5a",
+    "play.test.cjs": "5bb38a3aabdaf8d434f6236f0be2fc18ffef4b698e675d7995907668dd53575f",
+    "render.js": "f02c888c04dbdb67924f61fff8f4935e540abc2ba56e0e4683e24dbc8612fbfb",
+    "review.css": "5f2260b2876a6281e4506ab4774578b62524f9cb1680ace883e96f048903642b",
+    "review.html": "69a1c468f379effafcdfb7148938d968d62bf73e7edb5f34a9ff7c7b8af738c1",
+    "rig-constraints.js": "5f31efc00ec2a625e2fc5a1d93350944ecf700379848efba46c792418bf939bc",
+    "rig-constraints.test.cjs": "a1fab94dc79e4f81e7d5f5b707c29e607dd57a057d5c94cdcfcf125409dad6db",
+    "surfaces.js": "cca885f402bd91e923539e1e56f9752711f735e30a97d5908f95ad26fd718118",
+    "tactics.js": "7e6a3f399b86717da365d1dd0044a23765f3b5ba4b6b8a767b0ac7253ee9a5bd",
+    "tools/audit-armed-footwork.cjs": "e9d6c088bb97cef5677754d34ced2eb9baa3461301485710d2d167550fcb8866",
+    "tools/bake-armed-footwork.cjs": "06da85377e52f5d53c79afb13aee53edb2eea145755f6a5b3f3287a03bd69f40",
+    "tools/derive-knight-rolls.py": "d776dbb7d91980282023def5e1101db47c417b1a6c3e769e5da32aac0868a226",
+    "tools/render-footwork-preview.py": "86f28a3662eb28c1c5690bbde75326014bf2d354e467d043edfd7bc0e6d0d6a9",
+    "tools/retarget-knight.py": "eb31b1c73558f5decd31c5baa43460e8437c6e628dbdbcbee3a6b8f50cc77530",
+    "ui.js": "540f05da341b1f8636da6e4467fe2aa5554f1eb8fd6cc375798add591c95b5bd",
+    "vendor/GLTFLoader.js": "0ad9d40975844cf1473cc024471ba9476446ee4132b83194474cb889b4aa919a",
+    "vendor/three.min.js": "f36957277d6ece3c6db2a5c0461319ef4a9b21611e4d7f987be6a42f5ffe456f",
+    "weather.js": "c9c368548bae740aa852a538b3ccbf9c2ad9187d4551fb28d7226a739c381caa"
+  },
+  "verified_source_digest": "9a5f3b13a91a7ef274baffbd92c15612fc412bacbd2a4f3b1bac5e953149097e"
+}

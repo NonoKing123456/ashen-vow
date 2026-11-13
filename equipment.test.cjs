@@ -35,13 +35,19 @@ test('blade starts beyond the crossguard and leaves the palm on the leather grip
  const edges=new Map(),p=blade.geometry.attributes.position,key=i=>[p.getX(i),p.getY(i),p.getZ(i)].map(n=>Math.round(n*1e6)).join(',');for(let i=0;i<p.count;i+=3){const tri=[key(i),key(i+1),key(i+2)];for(let j=0;j<3;j++){const e=[tri[j],tri[(j+1)%3]].sort().join('|');edges.set(e,(edges.get(e)||0)+1);}}
  assert.equal([...edges.values()].filter(n=>n!==2).length,0,'blade base or tip is an open shell');
 });
-test('sword and shield grip centres follow the actual palm through yaw and a tumble',()=>{
- settle();const roll=C.getMove('roll');for(const yaw of [0,Math.PI/2,-Math.PI*.7])for(const time of [0,.16,.31,.51]){
-  actor.root.rotation.y=yaw;actor.animate({state:'roll',attack:roll,time,t:time,dt:1/60,speed:0,rollDir:new T.Vector3(1,0,0)});
+test('sword and shield grip centres follow the actual palm through yaw and every planned tumble direction',()=>{
+ const directions=[[[0,0,1],'Knight_Roll'],[[0,0,-1],'Knight_Roll_Back'],[[1,0,0],'Knight_Roll_Left'],[[-1,0,0],'Knight_Roll_Right'],[[.6,0,.8],'Knight_Roll'],[[-.6,0,-.8],'Knight_Roll_Back']];
+ for(const yaw of [0,Math.PI/2,-Math.PI*.7])for(const [localDirection,expectedSource]of directions){
+  actor.root.rotation.y=yaw;settle();
+  const direction=new T.Vector3(...localDirection).normalize().applyAxisAngle(new T.Vector3(0,1,0),yaw),roll=actor.planRoll(C.getMove('roll'),direction,yaw);
+  assert.ok(roll.rollPlan,'the grip fixture did not commit a native directional source');assert.equal(roll.animation.clip,expectedSource);
+  for(let i=0;i<=Math.ceil(roll.total*60);i++){
+  const time=Math.min(i/60,roll.total);actor.animate({state:'roll',attack:roll,time,t:time,dt:1/60,speed:0});assert.equal(actor.motionFrame.source,expectedSource);assert.equal(actor.weapon.group.visible,true);assert.equal(actor.shield.visible,true,'the native tumble must retain the equipped shield');
   for(const [item,hand]of [[actor.weapon.group,actor.rig.rightHand],[actor.shield,actor.rig.leftHand]]){
    const grip=item===actor.shield?actor.shield.grip:actor.weapon.grip,expectedPoint=hand.localToWorld(grip.handOffset.clone()),actualPoint=item.getWorldPosition(new T.Vector3());
    assert.ok(actualPoint.distanceTo(expectedPoint)<1e-5,'a grip drifted from the palm');
    const expectedQ=hand.getWorldQuaternion(new T.Quaternion()).multiply(grip.bindInverse).multiply(grip.orientation).normalize(),actualQ=item.getWorldQuaternion(new T.Quaternion()).normalize();assert.ok(actualQ.angleTo(expectedQ)<1e-5,'equipment inherited the root twice');
+  }
   }
  }
  actor.root.rotation.y=0;

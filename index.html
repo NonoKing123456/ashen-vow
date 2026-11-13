@@ -4,24 +4,27 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b1116">
-  <meta name="description" content="灰烬誓约：最后的钟声。穿过月下回廊，击败守卫，在钟楼前完成最后的誓言。一个可直接在浏览器游玩的原创第三人称动作游戏。">
-  <title>灰烬誓约 · THE LAST BELL</title>
+  <meta name="description" content="灰烬誓约：钟鸣之章。穿过月下回廊，击败守卫，在钟楼前完成最后的誓言。一个可直接在浏览器游玩的原创第三人称动作游戏。">
+  <title>灰烬誓约 · 钟鸣之章</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 3L38 42L32 59L26 42Z' fill='%23c8a36e'/%3E%3Cpath d='M13 39H51' stroke='%23c8a36e' stroke-width='4'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="next.css?v=11">
+  <link rel="stylesheet" href="next.css?v=12">
 </head>
 <body data-mode="title">
-  <canvas id="game" tabindex="0" aria-label="灰烬誓约：最后的钟声，3D 游戏场景"></canvas>
+  <canvas id="game" tabindex="0" aria-label="灰烬誓约：钟鸣之章，3D 游戏场景"></canvas>
   <div id="screen-vignette" aria-hidden="true"></div><div id="screen-grain" aria-hidden="true"></div><div id="hurt-overlay" aria-hidden="true"></div><div id="death-fade" aria-hidden="true"></div>
 
   <div id="game-hud" class="is-hidden">
     <header id="player-hud" aria-label="角色状态"><div class="vow-sigil" aria-hidden="true"><svg viewBox="0 0 44 58"><circle cx="22" cy="28" r="18"/><path d="M22 3 26 35 22 52 18 35ZM9 34H35M17 48H27M22 51V57"/></svg></div><div class="player-bars"><div class="meter health-meter" aria-label="生命"><i id="hp-trail"></i><i id="hp-fill"></i></div><div class="meter stamina-meter" aria-label="体力"><i id="stamina-fill"></i></div><div class="player-caption"><span>余烬誓约者</span><span id="hp-text">100 / 100</span></div></div></header>
-    <aside id="objective-panel"><small>最后的钟声</small><div><i></i><span id="objective-text">穿过荒废的回廊</span></div></aside>
+    <aside id="objective-panel"><small>钟鸣之章</small><div><i></i><span id="objective-text">穿过荒废的回廊</span></div></aside>
+    <div id="relic-hud" class="is-hidden"><i>◇</i><span id="equipped-relic"></span></div>
+    <div id="combat-status" class="is-hidden" role="status"></div>
+    <div id="telegraph" class="is-hidden" aria-live="polite"><i></i><span id="telegraph-text"></span></div>
     <aside id="step-panel" class="is-hidden"><span></span><p id="step-text"></p></aside>
     <div id="quick-item"><div class="item-frame"><span class="flask-drawing"><i></i></span><b id="flask-count">3</b></div><div><span>余烬之瓶</span><small><kbd>E</kbd> 恢复生命</small></div></div>
     <div id="interaction" class="is-hidden"><kbd id="interaction-key">F</kbd><span id="interaction-text"></span></div>
     <section id="boss-panel" class="is-hidden" aria-label="首领状态"><div class="boss-heading"><span id="boss-name">无冠守望者</span><small id="boss-title">THE CROWNLESS WARDEN</small></div><div class="boss-health-frame"><i></i><div class="meter boss-meter"><b id="boss-trail"></b><b id="boss-fill"></b></div><i></i></div><div class="posture-meter"><i id="posture-fill"></i></div></section>
     <div id="lock-marker" class="is-hidden"><span class="lock-ring"><i></i></span><div id="target-detail" class="is-hidden"><span id="target-name"></span><div><i id="target-hp"></i></div><div class="target-posture"><i id="target-posture"></i></div></div></div>
-    <footer id="game-footer"><div class="control-strip"><span><kbd>WASD</kbd> 移动</span><span><kbd>J</kbd> 连击</span><span><kbd>K</kbd> 重击</span><span><kbd>Space</kbd> 闪避</span><span><kbd>Q</kbd> 锁定</span><span><kbd>L</kbd> 格挡</span></div><div class="utility"><button id="hud-audio" aria-label="切换声音">声音 开</button><button id="hud-help" aria-label="查看操作说明">?</button><button id="hud-pause" aria-label="暂停游戏">Ⅱ</button></div></footer>
+    <footer id="game-footer"><div class="control-strip keyboard-controls"><span><kbd>WASD</kbd> 移动</span><span><kbd>J</kbd> 连击</span><span><kbd>K</kbd> 重击</span><span><kbd>Space</kbd> 闪避</span><span><kbd>Q</kbd> 锁定</span><span><kbd>L</kbd> 格挡</span></div><div class="control-strip gamepad-controls"><span><kbd>RB</kbd> 连击</span><span><kbd>RT</kbd> 重击</span><span><kbd>B</kbd> 翻滚</span><span><kbd>RS</kbd> 锁定</span><span><kbd>LB</kbd> 格挡</span><span><kbd>Y</kbd> 互动</span></div><div class="utility"><span id="input-support">键盘与鼠标</span><button id="hud-journal" aria-label="打开旅途手记">手记 <kbd>Tab</kbd><small id="memory-count">0 / 3</small></button><button id="hud-audio" aria-label="切换声音">声音 开</button><button id="hud-help" aria-label="查看操作说明">?</button><button id="hud-pause" aria-label="暂停游戏">Ⅱ</button></div></footer>
   </div>
 
   <div id="impact-caption" aria-live="polite"></div>
@@ -32,21 +35,83 @@
   <main id="title-screen" class="menu-surface">
     <div class="outer-frame" aria-hidden="true"></div>
     <div class="title-block"><div class="title-kicker"><i></i> THE LAST BELL</div><h1>灰烬誓约</h1><div class="title-english">ASHEN VOW</div><div class="fine-rule"><i></i></div><p>雨落在无人的回廊。<br>最后一声钟鸣，仍在等待。</p><nav class="title-actions"><button id="continue-button" class="primary is-hidden"><span>继续旅途</span><i>→</i></button><button id="start-button" class="primary"><span>踏入余烬</span><i>→</i></button><button id="title-help" class="text-button">旅途指引 <span>操作说明</span></button><button id="title-settings" class="text-button">设置 <span>画质与声音</span></button></nav></div>
-    <div class="title-location"><span>Ⅰ</span><div>THE FORSAKEN CLOISTER<small>雨夜回廊 · 最后的守望</small></div></div><div class="title-footer"><span>雨夜誓约 · 第三人称动作游戏</span><span>建议使用键盘与鼠标 <i>·</i> <kbd>Enter</kbd> 开始</span></div>
+    <div class="title-location"><span>Ⅰ</span><div>THE FORSAKEN CLOISTER<small>雨夜回廊 · 钟鸣之章</small></div></div><div class="title-footer"><span>钟鸣之章 · 版本 12</span><span>建议使用键盘与鼠标 <i>·</i> <kbd>Enter</kbd> 开始</span></div>
   </main>
 
-  <section id="pause-screen" class="menu-surface is-hidden"><div class="pause-content"><small>BETWEEN THE EMBERS</small><h2>时光暂歇</h2><div class="fine-rule"><i></i></div><button id="resume-button" class="primary"><span>继续旅途</span><i>→</i></button><button id="pause-settings" class="text-button">设置 <span>画质与声音</span></button><button id="pause-help" class="text-button">旅途指引 <span>操作说明</span></button><button id="pause-restart" class="text-button">从检查点重新开始</button><p class="pause-key"><kbd>Esc</kbd> 返回</p></div></section>
+  <section id="pause-screen" class="menu-surface is-hidden"><div class="pause-content"><small>BETWEEN THE EMBERS</small><h2>时光暂歇</h2><div class="fine-rule"><i></i></div><button id="resume-button" class="primary"><span>继续旅途</span><i>→</i></button><button id="pause-settings" class="text-button">设置 <span>画质与声音</span></button><button id="pause-help" class="text-button">旅途指引 <span>操作说明</span></button><button id="pause-journal" class="text-button">旅途手记 <span>地图与残响</span></button><button id="pause-restart" class="text-button">从检查点重新开始</button><button id="pause-title" class="text-button">返回主菜单</button><p class="pause-key"><kbd>Esc</kbd> 返回</p></div></section>
 
-  <section id="result-screen" class="is-hidden"><div class="result-content"><small id="result-kicker">THE VOW REMAINS</small><h2 id="result-title">誓约未竟</h2><div class="result-rule"></div><p id="result-copy">余烬未熄，你还可以再次站起。</p><div id="result-stats" class="is-hidden"><span>旅途用时 <b id="result-time">0:00</b></span><i></i><span>击败敌人 <b id="result-kills">0</b></span></div><button id="retry-button" class="primary"><span>于余烬中重生</span><i>→</i></button><p class="result-hint"><kbd>R</kbd> 再次启程</p></div></section>
+  <section id="result-screen" class="is-hidden"><div class="result-content"><small id="result-kicker">THE VOW REMAINS</small><h2 id="result-title">誓约未竟</h2><div class="result-rule"></div><p id="result-copy">余烬未熄，你还可以再次站起。</p><div id="result-stats" class="is-hidden"><span>旅途用时 <b id="result-time">0:00</b></span><span>击败敌人 <b id="result-kills">0</b></span><span>找到残响 <b id="result-memories">0 / 3</b></span><span>精准格挡 <b id="result-parries">0</b></span><span>翻滚闪避 <b id="result-rolls">0</b></span><span>承受伤害 <b id="result-damage">0</b></span><span>处决次数 <b id="result-executions">0</b></span></div><button id="retry-button" class="primary"><span>于余烬中重生</span><i>→</i></button><button id="result-title-button" class="text-button">返回主菜单</button><p class="result-hint"><kbd>R</kbd> 再次启程</p></div></section>
 
-  <dialog id="help-dialog" aria-labelledby="help-title"><button id="help-close" class="close-button" aria-label="关闭指引">×</button><small>THE WAY OF THE VOW</small><h2 id="help-title">每一剑，都留有余地。</h2><p class="dialog-lead">穿过回廊，清除守卫，推开通往钟楼的门。观察敌人的动作，在收招的间隙反击。</p><dl class="controls-list"><div><dt>行进</dt><dd><kbd>WASD</kbd> 移动 <kbd>Shift</kbd> 冲刺</dd></div><div><dt>进攻</dt><dd><kbd>J / 左键</kbd> 三段连击 <kbd>K</kbd> 重击</dd></div><div><dt>防御</dt><dd><kbd>Space</kbd> 翻滚 <kbd>L / 右键</kbd> 格挡</dd></div><div><dt>应对</dt><dd><kbd>Q</kbd> 锁定 <kbd>E</kbd> 喝药 <kbd>F</kbd> 互动</dd></div><div><dt>镜头</dt><dd>拖动旋转 · 滚轮缩放 <kbd>Esc</kbd> 暂停</dd></div></dl><p class="dialog-tip">体力耗尽时无法翻滚，举盾也可能被击破。重击与精准格挡都会积累敌人架势。金色光环出现时，靠近按 F 处决。点燃余烬后，可在此恢复并重新出发。</p><button id="help-done" class="primary"><span>我已准备好</span><i>→</i></button></dialog>
+  <dialog id="help-dialog" aria-labelledby="help-title"><button id="help-close" class="close-button" aria-label="关闭指引">×</button><small>THE WAY OF THE VOW</small><h2 id="help-title">每一剑，都留有余地。</h2><p class="dialog-lead">穿过回廊，清除守卫，推开通往钟楼的门。观察敌人的动作，在收招的间隙反击。</p><dl class="controls-list"><div><dt>行进</dt><dd><kbd>WASD</kbd> 移动 <kbd>Shift</kbd> 冲刺</dd></div><div><dt>进攻</dt><dd><kbd>J / 左键</kbd> 三段连击 <kbd>K</kbd> 重击</dd></div><div><dt>防御</dt><dd><kbd>Space</kbd> 翻滚 <kbd>L / 右键</kbd> 格挡</dd></div><div><dt>应对</dt><dd><kbd>Q</kbd> 锁定 <kbd>E</kbd> 喝药 <kbd>F</kbd> 互动</dd></div><div><dt>旅途</dt><dd><kbd>Tab / M</kbd> 手记、地图与残响</dd></div><div><dt>镜头</dt><dd>移动鼠标转动镜头 · 滚轮缩放 <kbd>Esc</kbd> 暂停</dd></div></dl><p class="controller-guide"><b>手柄</b> 左摇杆移动 · L3 奔跑 · 右摇杆镜头<br>RB 轻击 · RT 重击 · B 翻滚 · LB 格挡 · X 喝药 · Y 互动 · RS 锁定<br>Start 暂停 · Select 手记 · 十字键选择/调整 · A 确定 · B 返回</p><p class="dialog-tip">体力耗尽时无法翻滚，举盾也可能被击破。重击与精准格挡都会积累敌人架势。金色光环出现时，靠近按 F 处决。点燃余烬后，可在此恢复并选择一种赐福。探索三处残响，了解钟声沉寂的缘由。</p><button id="help-done" class="primary"><span>我已准备好</span><i>→</i></button></dialog>
 
-  <dialog id="settings-dialog" aria-labelledby="settings-title"><button id="settings-close" class="close-button" aria-label="关闭设置">×</button><small>SETTINGS</small><h2 id="settings-title">旅途设置</h2><div class="setting-row"><div><b>画面质量</b><small>自动调整分辨率，兼顾清晰与流畅</small></div><div class="segmented" role="group" aria-label="画面质量"><button id="quality-high" data-quality="high" aria-pressed="true">精细</button><button id="quality-low" data-quality="low" aria-pressed="false">流畅</button></div></div><div class="setting-row"><div><b>环境与战斗声音</b><small>钟声、剑鸣与脚步</small></div><button id="audio-toggle" class="toggle" aria-pressed="true"><i></i><span>开启</span></button></div><p class="dialog-tip">设置会保存在当前浏览器中。游戏无需登录。</p><button id="settings-done" class="primary"><span>返回旅途</span><i>→</i></button></dialog>
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <button id="settings-close" class="close-button" aria-label="关闭设置">×</button><small>SETTINGS</small><h2 id="settings-title" data-dialog-focus tabindex="-1">旅途设置</h2>
+    <div class="settings-columns">
+    <section class="settings-group" aria-labelledby="settings-display-title"><h3 id="settings-display-title" class="settings-section-label">画面与操作</h3>
+    <div class="setting-row"><div><b>画面质量</b><small>自动调整分辨率，兼顾清晰与流畅</small></div><div class="segmented" role="group" aria-label="画面质量"><button id="quality-high" aria-pressed="true">精细</button><button id="quality-low" aria-pressed="false">流畅</button></div></div>
+    <div class="setting-row"><div><label for="setting-sensitivity">镜头灵敏度</label><small>移动鼠标的镜头转速</small></div><div class="range-control"><input id="setting-sensitivity" type="range" min="0.4" max="1.8" step="0.1" value="1"><output id="setting-sensitivity-value" for="setting-sensitivity">1.0×</output></div></div>
+    <div class="setting-row"><div><b>镜头震动与动态反馈</b><small>关闭以减少冲击与界面动效</small></div><button id="setting-shake" class="toggle" aria-pressed="true"><i></i><span>开启</span></button></div>
+    <div class="setting-row"><div><b>旅途引导</b><small>显示操作建议，保留必要互动提示</small></div><button id="setting-hints" class="toggle" aria-pressed="true"><i></i><span>开启</span></button></div>
+    </section>
+    <section class="settings-group" aria-labelledby="settings-audio-title"><h3 id="settings-audio-title" class="settings-section-label">声音</h3>
+    <div class="setting-row"><div><b>环境与战斗声音</b><small>总声音开关</small></div><button id="audio-toggle" class="toggle" aria-pressed="true"><i></i><span>开启</span></button></div>
+    <div class="setting-row"><label for="setting-master">主音量</label><div class="range-control"><input id="setting-master" type="range" min="0" max="1" step="0.01" value="0.72"><output id="setting-master-value" for="setting-master">72%</output></div></div>
+    <div class="setting-row"><label for="setting-music">配乐</label><div class="range-control"><input id="setting-music" type="range" min="0" max="1" step="0.01" value="0.65"><output id="setting-music-value" for="setting-music">65%</output></div></div>
+    <div class="setting-row"><label for="setting-effects">音效与环境</label><div class="range-control"><input id="setting-effects" type="range" min="0" max="1" step="0.01" value="0.85"><output id="setting-effects-value" for="setting-effects">85%</output></div></div>
+    </section>
+    </div>
+    <div class="settings-footer"><p class="dialog-tip">设置会保存在当前浏览器中。</p><button id="settings-done" class="primary"><span>返回旅途</span><i>→</i></button></div>
+  </dialog>
+
+  <dialog id="journal-dialog" class="wide-dialog" aria-labelledby="journal-title">
+    <button id="journal-close" class="close-button" aria-label="关闭手记">×</button>
+    <small>A RECORD OF THE VOW</small><div class="journal-heading"><h2 id="journal-title" data-dialog-focus tabindex="-1">旅途手记</h2><span id="journal-stage">钟鸣之章</span></div>
+    <div class="journal-columns">
+      <figure class="journey-map">
+        <figcaption>雨夜回廊 <span>THE FORSAKEN CLOISTER</span></figcaption>
+        <svg id="journey-map" viewBox="-15 -37 30 62" role="img" aria-label="回廊地图，显示当前所在位置、小堂、钟门与大厅">
+          <g class="map-floor"><rect x="-4.5" y="9" width="9" height="13"/><rect x="-6" y="-7" width="12" height="17"/><rect x="-12" y="0" width="7" height="6.5"/><rect x="-3.1" y="-10" width="6.2" height="4"/><rect x="-11.5" y="-34" width="23" height="26"/></g>
+          <path class="map-route" d="M0 18L0 10L0 3L-9 3M0 3L0-8L0-25L0-29.6"/>
+          <g class="map-labels"><text x="0" y="20.7">失誓者之径</text><text x="0" y="6.8">失誓之庭</text><text x="-8.5" y="4.6">余火小堂</text><text x="0" y="-7.7">钟门</text><text x="0" y="-19">无冠者大厅</text><text x="0" y="-32">最后的钟声</text></g>
+          <path class="map-shrine" d="M-9 .9L-8.25 2.1L-9 2.8L-9.75 2.1Z"/>
+          <g id="map-discoveries"></g><g id="map-player"><circle r="0.58"/><path d="M0 0L0 1.65M-.4 1.05L0 1.65L.4 1.05"/></g>
+        </svg>
+        <div class="map-legend"><span><i class="you"></i>所在位置</span><span><i class="echo"></i>残响</span><span><i class="shrine"></i>余火</span></div>
+      </figure>
+      <div class="journal-record">
+        <div class="journal-objective"><small>尚未完成的誓言</small><p id="journal-objective">寻找最后的钟声。</p></div>
+        <div class="journal-section-head"><h3>遗落的残响</h3><span id="journal-memory-count">0 / 3</span></div>
+        <div class="journal-entries">
+          <button id="journal-entry-arrival"><span class="entry-number">I</span><span class="entry-name">尚未寻得的残响</span><small class="entry-state">沿途探索</small></button>
+          <button id="journal-entry-chapel"><span class="entry-number">II</span><span class="entry-name">尚未寻得的残响</span><small class="entry-state">沿途探索</small></button>
+          <button id="journal-entry-warden"><span class="entry-number">III</span><span class="entry-name">尚未寻得的残响</span><small class="entry-state">沿途探索</small></button>
+        </div>
+        <div class="journal-blessing"><small>当前赐福</small><p id="journal-relic">尚未立誓</p></div>
+        <dl class="journal-stats"><div><dt>精准格挡</dt><dd id="journal-parries">0</dd></div><div><dt>翻滚闪避</dt><dd id="journal-rolls">0</dd></div><div><dt>承受伤害</dt><dd id="journal-damage">0</dd></div><div><dt>处决次数</dt><dd id="journal-executions">0</dd></div></dl>
+      </div>
+    </div><button id="journal-done" class="primary"><span>收起手记</span><i>→</i></button>
+  </dialog>
+
+  <dialog id="shrine-dialog" class="wide-dialog" aria-labelledby="shrine-title">
+    <button id="shrine-close" class="close-button" aria-label="关闭余火小堂">×</button><small>THE EMBER REMEMBERS</small><h2 id="shrine-title" data-dialog-focus tabindex="-1">在余火前，立下新的誓言。</h2>
+    <p class="dialog-lead">伤口已愈，余烬之瓶已补满。带上一种赐福，再次出发。</p>
+    <div class="relic-grid">
+      <button id="relic-ember" class="relic-card" aria-pressed="false"><span class="relic-symbol ember-symbol" aria-hidden="true">◇</span><small>EMBER HEART</small><h3>余火之心</h3><strong>最大生命 +25</strong><p>将尚未熄灭的火，留给下一次站起。</p><span class="relic-state">选择此誓</span></button>
+      <button id="relic-wind" class="relic-card" aria-pressed="false"><span class="relic-symbol wind-symbol" aria-hidden="true">⌁</span><small>WAYFARER'S VOW</small><h3>行风之誓</h3><strong>最大耐力 +25</strong><p>留有余力的人，才能穿过漫长的夜。</p><span class="relic-state">选择此誓</span></button>
+      <button id="relic-edge" class="relic-card" aria-pressed="false"><span class="relic-symbol edge-symbol" aria-hidden="true">†</span><small>OATHBREAKER'S EDGE</small><h3>断誓之刃</h3><strong>造成伤害 +15%</strong><p>带上失落的锋芒，为守望写下终章。</p><span class="relic-state">选择此誓</span></button>
+    </div>
+    <div class="shrine-footnote"><span>当前赐福：<b id="shrine-current">尚未立誓</b></span><span>仅生效一种 · 可在小堂重新选择</span></div>
+    <button id="shrine-done" class="primary"><span>带着余火启程</span><i>→</i></button>
+  </dialog>
+
+  <dialog id="memory-dialog" aria-labelledby="memory-title">
+    <button id="memory-close" class="close-button" aria-label="关闭残响">×</button><div class="memory-ornament" aria-hidden="true">◇</div><small id="memory-subtitle">AN ECHO OF THE VOW</small><h2 id="memory-title" data-dialog-focus tabindex="-1">遗落的残响</h2><div class="memory-rule"></div><p id="memory-copy"></p><button id="memory-done" class="primary"><span>记住这道残响</span><i>→</i></button>
+  </dialog>
 
   <div id="touch-ui" class="is-hidden"><div id="joy"><i id="joy-knob"></i></div><div class="touch-skills"><button id="touch-lock">锁定</button><button id="touch-heal">药</button><button id="touch-guard">盾</button><button id="touch-roll">滚</button><button id="touch-heavy">重</button><button id="touch-light">轻</button><button id="touch-interact">互动</button></div></div>
   <div id="loading-strip" class="is-hidden"><i></i><span>唤醒庭院…</span></div>
   <div id="fatal" hidden><small>THE EMBER IS INTERRUPTED</small><h2>未能唤醒庭院</h2><p id="fatal-text"></p><button onclick="location.reload()" class="primary">重新载入 →</button></div>
   <script>addEventListener('error',e=>{const p=document.getElementById('fatal');if(p){p.hidden=false;document.getElementById('fatal-text').textContent=e.message||'图形资源未能载入，请确认浏览器已开启硬件加速后重试。'}});</script>
-  <script src="vendor/three.min.js"></script><script src="vendor/GLTFLoader.js?v=11"></script><script src="feel.js?v=11"></script><script src="motion.js?v=11"></script><script src="characters.js?v=11"></script><script src="surfaces.js?v=11"></script><script src="weather.js?v=11"></script><script src="level.js?v=11"></script><script src="render.js?v=11"></script><script src="audio.js?v=11"></script><script src="ui.js?v=11"></script><script src="game.js?v=11"></script>
+  <script src="vendor/three.min.js"></script><script src="vendor/GLTFLoader.js?v=12"></script><script src="feel.js?v=12"></script><script src="motion.js?v=12"></script><script src="characters.js?v=12"></script><script src="surfaces.js?v=12"></script><script src="weather.js?v=12"></script><script src="level.js?v=12"></script><script src="render.js?v=12"></script><script src="audio.js?v=12"></script><script src="ui.js?v=12"></script><script src="journey.js?v=12"></script><script src="tactics.js?v=12"></script><script src="controls.js?v=12"></script><script src="game.js?v=12"></script>
 </body>
 </html>

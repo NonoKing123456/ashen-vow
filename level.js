@@ -5,12 +5,20 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  const PI=Math.PI,TAU=PI*2,lerp=T.MathUtils.lerp;let seed=0x3c73a1;
  const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
  const root=new T.Group(),architecture=new T.Group(),life=new T.Group();root.name="The Exile's Procession";root.add(architecture,life);scene.add(root);
- const textures=[],materials=[],obstacles=[],fire=[],lights=[],cloths=[],mistUniforms={clock:{value:0}};
+ const textures=[],materials=[],obstacles=[],fire=[],lights=[],cloths=[],memoryVisuals=new Map(),mistUniforms={clock:{value:0}};
+ let bossDefeated=false,bellRung=false,bellAge=0,endingAmount=0,reducedMotion=false;
  const bounds=[{x:0,z:15.5,w:9,d:13},{x:0,z:1.5,w:12,d:17},{x:-8.5,z:3.25,w:7,d:6.5},{x:0,z:-8,w:6.2,d:4},{x:0,z:-21,w:23,d:26}];
  const spawn={x:0,y:0,z:18},bossSpawn={x:0,y:0,z:-25};
  const checkpoints=[{id:'chapel',x:-9,y:0,z:3,name:'余火小堂',kind:'checkpoint',radius:1.8}];
  const patrols=[{id:'exile',x:-1.8,y:0,z:8,yaw:PI,name:'流放守卫',route:[[-1.8,8],[1,5],[-1.8,2]]},{id:'gatekeeper',x:2.2,y:0,z:-2,yaw:PI,name:'门前守卫',route:[[2.2,-2],[2.8,-5],[1,-1]]}];
  const interactables=[...checkpoints,{id:'gate',x:0,y:0,z:-6.0,name:'封誓之门',kind:'gate',radius:2.2}];
+ const discoveries=[
+  {id:'arrival',x:2.8,z:16.7,radius:1.7,kind:'memory',name:'守门人的残响'},
+  {id:'chapel',x:-8.3,z:5.2,radius:1.7,kind:'memory',name:'未寄出的祷文'},
+  {id:'warden',x:7.4,z:-19.8,radius:1.7,kind:'memory',name:'无冠者的誓言'}
+ ];
+ const bell={id:'last-bell',x:0,z:-29.5,radius:2,kind:'bell',name:'最后的钟声'};
+ interactables.push(...discoveries,bell);
  function mat(color,metal=0,rough=.94){const m=new T.MeshStandardMaterial({color,metalness:metal,roughness:rough});m.color.convertSRGBToLinear();materials.push(m);return m;}
  const ashStone=mat('#697376'),obsidian=mat('#3d4b51',.05,.85),weathered=mat('#525e61'),edge=mat('#7c817b'),deep=mat('#263138'),bronze=mat('#8d734d',.65,.50),soil=mat('#2b332e'),moss=mat('#465343'),wood=mat('#302c2a'),wax=mat('#b5aa91'),robe=mat('#455052'),bone=mat('#929388');
  const flooring=mat('#566369',.04,.94),fracture=mat('#202b30'),rock=mat('#39444a'),mountain=mat('#22323d'),farMountain=mat('#1b2b39'),city=mat('#293b47');
@@ -158,6 +166,63 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  function candle(x,z,h=.25){cylinder(architecture,x,h*.5+.02,z,.03,h,wax,7);const f=ball(life,x,h+.055,z,.02,.05,.02,flameInner,7);f.castShadow=false;fire.push({mesh:f,scale:f.scale.clone(),phase:random()*TAU});}
  for(const [x,z,h]of [[-10.2,2.4,.32],[-10.5,4.3,.21],[-9.8,4.8,.25],[-11.4,2.1,.35],[-11.5,4.5,.18],[-9.7,2.1,.2],[-1,-32.5,.25],[1.1,-32.8,.31]])candle(x,z,h);
 
+ // Three authored relics reward looking away from the combat line. Their
+ // footprints remain traversable; only the light and suspended ash move.
+ // All masonry and metalwork still enter the static material batches below.
+ const relicSilver=mat('#a9b5b0',.72,.35),relicInk=mat('#b1aa91',.12,.78);
+ function relic(at,index){
+  const q=group(architecture,at.x,0,at.z);q.rotation.y=index===0?-.38:index===1?.38:-.4;
+  box(q,0,.09,0,.92,.18,.78,deep);box(q,0,.22,0,.73,.11,.61,edge);
+  if(index===0){
+   // A buried round shield, with a blade broken at the hilt.
+   const shield=cylinder(q,0,.38,0,.36,.07,obsidian,24);shield.rotation.x=.36;
+   const trim=ring(q,0,.40,.02,.32,.018,bronze,32);trim.rotation.x=PI*.5+.36;
+   beam(q,[.04,.40,.02],[-.09,1.03,.02],.029,relicSilver,7);
+   beam(q,[-.26,.86,.02],[.12,.95,.02],.024,bronze,7);
+   ball(q,-.12,1.12,.02,.045,.08,.045,bronze,10);
+  }else if(index===1){
+   // Two thick page blocks and a narrow binding form an open stone prayer book.
+   const left=box(q,-.16,.40,0,.33,.075,.43,relicInk);left.rotation.z=-.16;
+   const right=box(q,.16,.40,0,.33,.075,.43,relicInk);right.rotation.z=.16;
+   beam(q,[0,.36,-.22],[0,.36,.22],.018,bronze,6);
+   for(const side of [-1,1])for(let i=0;i<4;i++){
+    const stroke=box(q,side*.16,.451,-.13+i*.075,.20,.004,.008,bronze,false);stroke.rotation.z=side*.16;
+   }
+   for(const x of [-.32,.32])candle(at.x+x,at.z-.40,.20);
+  }else{
+   // A battered, empty circlet on folded cloth: the missing sovereign's token.
+   const cloth=box(q,0,.34,0,.59,.12,.49,robe);cloth.rotation.y=.13;
+   const band=ring(q,0,.48,0,.24,.028,bronze,32);band.rotation.x=PI/2;
+   for(let i=0;i<5;i++){const a=i/5*TAU;beam(q,[Math.sin(a)*.24,.48,Math.cos(a)*.24],[Math.sin(a)*.24,.66+(i%2)*.05,Math.cos(a)*.24],.017,relicSilver,5);}
+  }
+  const ember=mat('#bba77d',.35,.3);ember.emissive.set('#e6ac51');ember.emissiveIntensity=.8;
+  const spark=mesh(life,new T.IcosahedronGeometry(.055,1),ember,at.x,1.15,at.z,false);spark.name='memory-'+at.id;
+  const traceMat=new T.MeshBasicMaterial({color:'#ceae73',transparent:true,opacity:.22,depthWrite:false,side:T.DoubleSide});materials.push(traceMat);
+  const halo=mesh(life,new T.TorusGeometry(.22,.009,4,32),traceMat,at.x,1.15,at.z,false);halo.rotation.y=.55;halo.rotation.x=.45;
+  memoryVisuals.set(at.id,{spark,halo,ember,traceMat,found:false,amount:1,phase:index*2.1});
+ }
+ discoveries.forEach(relic);
+
+ // The last bell is a real lathed bronze shell, suspended from the rear rib.
+ // Its pull cord ends within reach on the fighting floor, ahead of the stairs.
+ const bellBronze=mat('#83714f',.8,.39),bellInterior=mat('#382f26',.64,.6),ropeMaterial=mat('#6e6654',.05,.95);
+ beam(architecture,[-10.75,10.05,-31],[10.75,10.05,-31],.13,wood,8);
+ for(const x of [-1.5,1.5])beam(architecture,[x,10.05,-31],[x*.35,8.6,-30.7],.038,bronze,7);
+ const bellPivot=group(life,0,8.6,-30.7);bellPivot.name='last-bell';
+ const bellProfile=[new T.Vector2(.0,-.10),new T.Vector2(.30,-.13),new T.Vector2(.48,-.37),new T.Vector2(.56,-.85),new T.Vector2(.72,-1.38),new T.Vector2(1.02,-1.66),new T.Vector2(1.06,-1.76),new T.Vector2(.99,-1.82),new T.Vector2(.84,-1.73),new T.Vector2(.63,-1.41),new T.Vector2(.48,-.83),new T.Vector2(.41,-.37),new T.Vector2(.24,-.22),new T.Vector2(.0,-.20)];
+ mesh(bellPivot,new T.LatheGeometry(bellProfile.reverse(),48),bellBronze);
+ for(const [y,r]of [[-.42,.50],[-1.53,.85],[-1.76,1.055]]){const rib=ring(bellPivot,0,y,0,r,.027,bronze,48);rib.rotation.x=PI/2;}
+ cylinder(bellPivot,0,-.73,0,.027,1.32,bellInterior,8);ball(bellPivot,0,-1.40,0,.13,.18,.13,bellInterior,14);
+ const crest=ring(bellPivot,0,-.82,.57,.13,.014,bronze,20);beam(bellPivot,[0,-1.07,.59],[0,-.60,.59],.018,bronze,6);
+ const cord=group(life,bell.x,0,bell.z);cord.name='bell-pull-cord';
+ curve(cord,[[0,7.25,-1.1],[.08,5.3,-.15],[-.04,3.1,0],[0,1.26,0]],.021,ropeMaterial,18,6);
+ const knot=ring(cord,0,1.10,0,.115,.026,ropeMaterial,20);knot.scale.y=1.5;
+ const bellEmber=mat('#9e7950',.2,.6);bellEmber.emissive.set('#f5bb72');bellEmber.emissiveIntensity=0;
+ const bellToken=mesh(cord,new T.IcosahedronGeometry(.075,1),bellEmber,0,.84,0,false);
+ const bellLight=new T.PointLight('#dcb57e',0,7,2);bellLight.position.set(bell.x,2,bell.z);life.add(bellLight);
+ const echoMaterial=new T.MeshBasicMaterial({color:'#e4c394',transparent:true,opacity:0,side:T.DoubleSide,depthWrite:false});materials.push(echoMaterial);
+ const bellEcho=mesh(life,new T.RingGeometry(.97,1,72),echoMaterial,bell.x,.035,bell.z,false);bellEcho.rotation.x=-PI/2;bellEcho.visible=false;
+
  // Two old hanging banners supply secondary motion and human scale.
  const cloth=mat('#4d3030');cloth.side=T.DoubleSide;
  for(const [x,z,h,yaw]of [[6.0,-3.0,5.0,-PI/2],[-11.6,-27,7.0,PI/2]]){const q=group(life,x,h,z);q.rotation.y=yaw;const geo=new T.PlaneGeometry(1.0,2.4,8,14),base=geo.attributes.position.array.slice();const o=mesh(q,geo,cloth,0,-1.1,0,false);beam(q,[-.62,.18,0],[.62,.18,0],.025,bronze,6);const a=geo.attributes.position;for(let i=0;i<a.count;i++)if(a.getY(i)<-.9)a.setY(i,a.getY(i)+Math.sin(a.getX(i)*17)*.09);cloths.push({mesh:o,base,phase:x});}
@@ -171,6 +236,26 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  // A distant split cathedral is deliberately offset from the local gate axis.
  const distant=group(architecture,-26,0,-63);box(distant,0,9,0,10,18,5,city,false);for(const x of [-6.6,6.6]){cylinder(distant,x,13.3,0,1.7,26.6,city,8,1.35,false);cylinder(distant,x,30.2,0,2.0,7.1,city,6,0,false);}const dRoof=cylinder(distant,0,20.4,0,4.0,5.0,city,4,0,false);dRoof.scale.z=.7;dRoof.rotation.y=PI/4;
  const moonMaterial=new T.MeshBasicMaterial({color:'#a8b9bf',fog:false});materials.push(moonMaterial);mesh(life,new T.SphereGeometry(3.0,28,16),moonMaterial,-25,32,-78,false);
+
+ // A single low-cost sky draw gives the valley an overcast horizon. Clouds
+ // drift slowly behind the architecture; they never become a screen overlay.
+ const skyUniforms={clock:{value:0},ending:{value:0}};
+ const skyMaterial=new T.ShaderMaterial({uniforms:skyUniforms,side:T.BackSide,depthWrite:false,fog:false,
+  vertexShader:'varying vec3 direction;void main(){direction=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+  fragmentShader:`precision mediump float;varying vec3 direction;uniform float clock;uniform float ending;
+   float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+   float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1.,0.)),f.x),mix(h(i+vec2(0.,1.)),h(i+vec2(1.,1.)),f.x),f.y);}
+   void main(){vec3 d=normalize(direction);float y=max(d.y,0.);float horizon=pow(1.-y,5.);
+    vec2 p=d.xz/max(.16,y+.18)*1.6+vec2(clock*.008,clock*.003);
+    float clouds=n(p)*.65+n(p*2.03+4.7)*.25+n(p*4.1-2.1)*.10;
+    vec3 c=mix(vec3(.0025,.0055,.010),vec3(.009,.018,.029),horizon);
+    c+=vec3(.009,.013,.019)*smoothstep(.34,.77,clouds)*smoothstep(-.03,.18,d.y);
+    c=mix(c,c*vec3(1.08,1.015,.93)+vec3(.020,.011,.003)*horizon,ending*.72);
+    gl_FragColor=vec4(c,1.);
+    #include <tonemapping_fragment>
+    #include <encodings_fragment>
+   }`});materials.push(skyMaterial);
+ const sky=mesh(life,new T.SphereGeometry(155,32,16),skyMaterial,0,0,-8,false);sky.renderOrder=-20;sky.frustumCulled=false;sky.receiveShadow=false;
 
  // Sculpted low mist curls along walls and behind the gate, with soft alpha and
  // depth testing. The center of each encounter remains readable.
@@ -196,10 +281,34 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  const concat=arrays=>{const a=new Float32Array(arrays.reduce((n,b)=>n+b.length,0));let at=0;for(const b of arrays){a.set(b,at);at+=b.length;}return a;};
  let staticTriangles=0;for(const b of buckets.values()){const g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(concat(b.p),3));g.setAttribute('normal',new T.BufferAttribute(concat(b.n),3));g.setAttribute('uv',new T.BufferAttribute(concat(b.uv),2));g.computeBoundingSphere();staticTriangles+=g.attributes.position.count/3;mesh(root,g,b.material,0,0,0,b.cast);}
  for(const o of old){o.parent.remove(o);o.geometry.dispose();}root.remove(architecture);
- const stats={staticDraws:buckets.size,staticTriangles,rooms:5};
- return {root,obstacles,bounds,spawn,checkpoints,bossSpawn,patrols,interactables,stats,
+ const stats={staticDraws:buckets.size,staticTriangles,rooms:5,discoveries:discoveries.length};
+ function updateLandmarks(dt,t){
+  endingAmount=lerp(endingAmount,bellRung?1:0,1-Math.exp(-.38*dt));
+  skyUniforms.clock.value=reducedMotion?0:t;skyUniforms.ending.value=endingAmount;
+  for(const v of memoryVisuals.values()){
+   v.amount=lerp(v.amount,v.found?.1:1,1-Math.exp(-4*dt));
+   v.spark.position.y=1.15+(reducedMotion?0:Math.sin(t*1.5+v.phase)*.045);
+   v.spark.rotation.y=reducedMotion?0:t*.3;v.spark.scale.setScalar(v.amount);
+   v.ember.emissiveIntensity=.4+v.amount*.9;v.traceMat.opacity=.2*v.amount;
+   v.halo.position.y=v.spark.position.y;v.halo.rotation.z=reducedMotion?0:t*.20+v.phase;
+  }
+  bellEmber.emissiveIntensity=lerp(bellEmber.emissiveIntensity,bossDefeated?.9:0,1-Math.exp(-2*dt));
+  bellLight.intensity=lerp(bellLight.intensity,bossDefeated?10:0,1-Math.exp(-2*dt));
+  if(bellRung){
+   bellAge+=dt;const envelope=Math.exp(-bellAge*.22),swing=reducedMotion?0:Math.sin(bellAge*2.65)*.16*envelope;
+   bellPivot.rotation.z=swing;cord.rotation.z=swing*.13;bellToken.rotation.y=bellAge*.25;
+   const cycle=(bellAge*.42)%1;bellEcho.visible=bellAge<8&&!reducedMotion;
+   bellEcho.scale.setScalar(.4+cycle*12);echoMaterial.opacity=(1-cycle)*.19;
+  }else{bellAge=0;bellPivot.rotation.z=0;cord.rotation.z=0;bellEcho.visible=false;}
+ }
+ return {root,obstacles,bounds,spawn,checkpoints,bossSpawn,patrols,interactables,discoveries,bell,stats,
+  setDiscovery(id,found=true){const v=memoryVisuals.get(id);if(v)v.found=!!found;},
+  setBossDefeated(value){bossDefeated=!!value;if(!bossDefeated){bellRung=false;bellAge=0;endingAmount=0;}},
+  ringBell(){if(!bossDefeated||bellRung)return false;bellRung=true;bellAge=0;return true;},
+  setReducedMotion(value){reducedMotion=!!value;},
+  get ending(){return endingAmount;},
   setGate(open){gateTarget=open?1:0;const i=obstacles.indexOf(gateBarrier);if(open&&i>=0)obstacles.splice(i,1);else if(!open&&i<0)obstacles.push(gateBarrier);},
-  update(dt,t){mistUniforms.clock.value=t;gateAmount=lerp(gateAmount,gateTarget,1-Math.exp(-1.9*dt));doorLeft.rotation.y=gateAmount*PI*.56;doorRight.rotation.y=-gateAmount*PI*.56;for(const f of fire){f.mesh.scale.y=f.scale.y*(.86+Math.sin(t*7.4+f.phase)*.18);f.mesh.scale.x=f.scale.x*(.94+Math.sin(t*5.3+f.phase)*.1);f.mesh.rotation.z=Math.sin(t*3.4+f.phase)*.09;}for(const l of lights)l.light.intensity=l.base*(.96+Math.sin(t*5+l.phase)*.045);for(const b of cloths){const p=b.mesh.geometry.attributes.position;for(let i=0;i<p.count;i++){const x=b.base[i*3],y=b.base[i*3+1],u=(1.2-y)/2.4;p.setZ(i,Math.sin(t*1.7+x*2+y*1.8+b.phase)*.11*u);};p.needsUpdate=true;b.mesh.geometry.computeVertexNormals();}const a=ashGeo.attributes.position;for(let i=0;i<a.count;i++){a.setY(i,(a.getY(i)+dt*.055)%11);a.setX(i,a.getX(i)+Math.sin(t*.31+i)*dt*.014);}a.needsUpdate=true;},
+  update(dt,t){updateLandmarks(dt,t);mistUniforms.clock.value=reducedMotion?0:t;gateAmount=lerp(gateAmount,gateTarget,1-Math.exp(-1.9*dt));doorLeft.rotation.y=gateAmount*PI*.56;doorRight.rotation.y=-gateAmount*PI*.56;for(const f of fire){f.mesh.scale.y=f.scale.y*(.86+Math.sin(t*7.4+f.phase)*.18);f.mesh.scale.x=f.scale.x*(.94+Math.sin(t*5.3+f.phase)*.1);f.mesh.rotation.z=Math.sin(t*3.4+f.phase)*.09;}for(const l of lights)l.light.intensity=l.base*(.96+Math.sin(t*5+l.phase)*.045);for(const b of cloths){const p=b.mesh.geometry.attributes.position;for(let i=0;i<p.count;i++){const x=b.base[i*3],y=b.base[i*3+1],u=(1.2-y)/2.4;p.setZ(i,Math.sin(t*1.7+x*2+y*1.8+b.phase)*.11*u);};p.needsUpdate=true;b.mesh.geometry.computeVertexNormals();}const a=ashGeo.attributes.position;for(let i=0;i<a.count;i++){a.setY(i,(a.getY(i)+dt*.055)%11);a.setX(i,a.getX(i)+Math.sin(t*.31+i)*dt*.014);}a.needsUpdate=true;},
   dispose(){const seen=new Set();root.traverse(o=>{if(o.geometry&&!seen.has(o.geometry)){seen.add(o.geometry);o.geometry.dispose();}});for(const m of materials)m.dispose();for(const t of textures)t.dispose();scene.remove(root);}
  };
 }

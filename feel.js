@@ -14,6 +14,9 @@ const LIGHT=[
 ];
 const HEAVY={id:'heavy',kind:'heavy',index:0,pose:'charged-cleave',windup:.51,active:.20,followThrough:.17,recovery:.26,stamina:34,damage:54,poise:65,reach:2.45,lunge:.80,hitstop:.095,cancelAt:.91,guardAt:.96,chainOpen:.94,chainClose:1.11,twist:-.35,slash:0};
 const CRITICAL={id:'critical',kind:'critical',type:'thrust',index:0,pose:'riposte-thrust',windup:.30,active:.24,followThrough:.20,recovery:.40,stamina:28,damage:100,poise:0,reach:2.65,lunge:.48,hitstop:.14,cancelAt:1.14,guardAt:1.14,chainOpen:Infinity,chainClose:Infinity};
+// A short committed thrust rewards deliberate roll-and-counter play. The same
+// authored thrust pose keeps its blade contact tied to this profile's windows.
+const DODGE_ATTACK={id:'dodge-thrust',kind:'dodgeAttack',type:'thrust',index:0,pose:'long-thrust',windup:.22,active:.20,followThrough:.12,recovery:.25,stamina:19,damage:32,poise:34,reach:2.30,lunge:.60,hitstop:.062,cancelAt:.60,guardAt:.65,chainOpen:.55,chainClose:.76,twist:-.42,slash:0};
 const ROLL={id:'roll',kind:'roll',index:0,pose:'directional-roll',windup:.075,active:.325,followThrough:.09,recovery:.13,stamina:25,damage:0,poise:0,reach:0,lunge:2.85,hitstop:0,cancelAt:.62,guardAt:.58,chainOpen:.55,chainClose:.62,iframeStart:.075,iframeEnd:.40};
 const SENTINEL={id:'sentinel-cut',kind:'sentinel',index:0,pose:'diagonal-right',windup:.72,active:.22,followThrough:.20,recovery:.48,stamina:0,damage:19,poise:18,reach:2.05,lunge:.46,hitstop:.052,cancelAt:1.62,guardAt:1.62,chainOpen:1.62,chainClose:1.62,twist:-.68,slash:1,turnLock:.48};
 const BOSS={
@@ -31,7 +34,12 @@ function finishProfile(p){
 }
 function getMove(kind='light',index=0){
  const i=((Math.trunc(Number(index)||0)%3)+3)%3;
- return finishProfile(kind==='critical'?CRITICAL:kind==='heavy'?HEAVY:kind==='roll'?ROLL:kind==='sentinel'?SENTINEL:LIGHT[i]);
+ return finishProfile(kind==='critical'?CRITICAL:kind==='dodgeAttack'?DODGE_ATTACK:kind==='heavy'?HEAVY:kind==='roll'?ROLL:kind==='sentinel'?SENTINEL:LIGHT[i]);
+}
+function counterProfile(move){
+ // Keep all timings and collision windows unchanged: the reward changes impact,
+ // not when a sword can deal damage. Do not mutate shared authored profiles.
+ return {...move,id:move.id+'-counter',counter:true,damage:Math.round(move.damage*1.25),poise:Math.round(move.poise*1.30),hitstop:Math.min(.14,move.hitstop*1.12),windows:move.windows.map(w=>w.slice()),activeWindows:move.activeWindows.map(w=>w.slice())};
 }
 function getBossMove(index=0,phase=1){
  const phase2=phase===true||Number(phase)>=2;
@@ -152,6 +160,6 @@ function cameraDistance(origin,goal,obstacles,padding=.22){
  }
  return Math.max(.75,length*nearest-.08);
 }
-const api={cameraDistance,angleDelta,getMove,getBossMove,getSentinelMove,samplePose,canCancel,sweptBladeHit,segmentDistanceSqXZ,circleOverlap,guardHit,createInputBuffer,queueInput,consumeInput};
+const api={cameraDistance,angleDelta,getMove,getBossMove,getSentinelMove,counterProfile,samplePose,canCancel,sweptBladeHit,segmentDistanceSqXZ,circleOverlap,guardHit,createInputBuffer,queueInput,consumeInput};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.AshenCombat=api;
 })(typeof window!=='undefined'?window:globalThis);

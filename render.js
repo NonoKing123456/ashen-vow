@@ -18,6 +18,9 @@ function create({THREE:T,canvas}){
  moon.shadow.mapSize.set(2048,2048);Object.assign(moon.shadow.camera,{left:-25,right:25,top:41,bottom:-41,near:.5,far:105});moon.shadow.camera.updateProjectionMatrix();moon.shadow.normalBias=.018;moon.shadow.bias=-.00012;moon.shadow.radius=2;
  const skyFill=new T.DirectionalLight('#819bb3',.53);skyFill.position.set(16,12,23);scene.add(skyFill);
  const groundBounce=new T.DirectionalLight('#bba17d',.23);groundBounce.position.set(3,4,17);scene.add(groundBounce);
+ const night={sky:new T.Color('#0b131b'),fog:new T.Color('#101b24'),moon:new T.Color('#c2d7eb'),ambient:new T.Color('#a7bfd1')};
+ const morning={sky:new T.Color('#19202a'),fog:new T.Color('#263137'),moon:new T.Color('#d9c6a8'),ambient:new T.Color('#bfc7c6')};
+ let ending=0;
 
  // Broad sky lobes, horizon bounce and a soft warm reflection. No flat chrome.
  const pixels=new Uint8Array(256*128*4);
@@ -39,7 +42,7 @@ function create({THREE:T,canvas}){
  const uniforms={
   colorImage:{value:target.texture},depthImage:{value:useDepth?target.depthTexture:target.texture},
   inverseProjection:{value:camera.projectionMatrixInverse},projectionScale:{value:camera.projectionMatrix.elements[5]},
-  texel:{value:new T.Vector2(1/width,1/height)},aoStrength:{value:useDepth?.42:0},bloomStrength:{value:.085},damage:{value:0},phase:{value:0}
+  texel:{value:new T.Vector2(1/width,1/height)},aoStrength:{value:useDepth?.42:0},bloomStrength:{value:.085},damage:{value:0},phase:{value:0},ending:{value:0}
  };
  const post=new T.ShaderMaterial({
   uniforms,defines:{HAS_DEPTH:useDepth?1:0},extensions:{derivatives:useDepth},depthTest:false,depthWrite:false,toneMapped:false,
@@ -48,7 +51,7 @@ function create({THREE:T,canvas}){
    varying vec2 screenUV;
    uniform sampler2D colorImage;uniform sampler2D depthImage;
    uniform mat4 inverseProjection;uniform float projectionScale;
-   uniform vec2 texel;uniform float aoStrength;uniform float bloomStrength;uniform float damage;uniform float phase;
+   uniform vec2 texel;uniform float aoStrength;uniform float bloomStrength;uniform float damage;uniform float phase;uniform float ending;
    vec3 colorAt(vec2 p){return texture2D(colorImage,clamp(p,texel,vec2(1.)-texel)).rgb;}
    vec3 bloomTap(vec2 p){vec3 h=colorAt(p);return h*smoothstep(.78,.985,max(h.r,max(h.g,h.b)));}
    float luminance(vec3 c){return dot(c,vec3(.299,.587,.114));}
@@ -103,6 +106,7 @@ function create({THREE:T,canvas}){
     vec2 q=uv*2.-1.;float edge=smoothstep(.28,1.35,length(q));
     c*=1.-.075*edge;c+=vec3(.085,-.012,-.018)*clamp(damage,0.,1.)*edge;
     c+=vec3(.01,.002,-.004)*clamp(phase,0.,1.);
+    c+=vec3(.012,.006,-.003)*ending*smoothstep(.05,.7,lum);
     gl_FragColor=vec4(clamp(c,0.,1.),1.);
    }`
  });
@@ -112,7 +116,7 @@ function create({THREE:T,canvas}){
  resize();
  return {renderer,scene,camera,lights:{ambient,moon,skyFill,groundBounce},
   getResolution:()=>Number(renderScale.toFixed(2)),
-  render(dt,t,feedback={}){if(disposed)return;if(dt>0&&dt<.15){frameAverage+=(dt-frameAverage)*.04;adaptAge+=dt;settle+=dt;if(adaptAge>3&&settle>2.5){const previousScale=renderScale;if(frameAverage>1/43)renderScale=Math.max(.72,renderScale-.08);else if(frameAverage<1/58)renderScale=Math.min(1,renderScale+.04);if(Math.abs(renderScale-previousScale)>.001){settle=0;resize();}}}uniforms.damage.value=Number.isFinite(feedback.damage)?feedback.damage:0;uniforms.phase.value=Number.isFinite(feedback.phase)?feedback.phase:0;const previous=renderer.getRenderTarget();renderer.setRenderTarget(target);renderer.clear();renderer.render(scene,camera);renderer.setRenderTarget(previous);renderer.render(postScene,postCamera);},
+  render(dt,t,feedback={}){if(disposed)return;if(dt>0&&dt<.15){frameAverage+=(dt-frameAverage)*.04;adaptAge+=dt;settle+=dt;if(adaptAge>3&&settle>2.5){const previousScale=renderScale;if(frameAverage>1/43)renderScale=Math.max(.72,renderScale-.08);else if(frameAverage<1/58)renderScale=Math.min(1,renderScale+.04);if(Math.abs(renderScale-previousScale)>.001){settle=0;resize();}}}ending+=(T.MathUtils.clamp(Number(feedback.ending)||0,0,1)-ending)*(1-Math.exp(-Math.max(0,Math.min(.05,dt))*1.4));uniforms.ending.value=ending;scene.background.lerpColors(night.sky,morning.sky,ending);scene.fog.color.lerpColors(night.fog,morning.fog,ending);moon.color.lerpColors(night.moon,morning.moon,ending);ambient.color.lerpColors(night.ambient,morning.ambient,ending);groundBounce.intensity=.23+ending*.43;skyFill.intensity=.53+ending*.12;renderer.toneMappingExposure=1.07+ending*.055;uniforms.damage.value=Number.isFinite(feedback.damage)?feedback.damage:0;uniforms.phase.value=Number(feedback.phase)>=2?1:0;const previous=renderer.getRenderTarget();renderer.setRenderTarget(target);renderer.clear();renderer.render(scene,camera);renderer.setRenderTarget(previous);renderer.render(postScene,postCamera);},
   resize,setQuality,
   dispose(){if(disposed)return;disposed=true;target.dispose();quad.geometry.dispose();post.dispose();environmentTarget.dispose();renderer.dispose();}
  };

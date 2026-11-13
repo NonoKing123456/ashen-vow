@@ -23,7 +23,7 @@ function contact(knight,move,distance,height=1.9){
   previous={base,tip};
  }return hit;
 }
-for(const kind of ['light','heavy','critical'])for(const distance of [.98,1.45,1.85])test('real sword '+kind+' contacts at '+distance+'m',()=>{
+for(const kind of ['light','heavy','critical','dodgeAttack'])for(const distance of [.98,1.45,1.85])test('real sword '+kind+' contacts at '+distance+'m',()=>{
  assert.ok(contact(actor,C.getMove(kind),distance),kind+' missed '+distance);
 });
 for(const index of [0,1,2])test('real alternating light cut '+index+' contacts in the controller window',()=>assert.ok(contact(actor,C.getMove('light',index),1.45)));

@@ -3,6 +3,7 @@
 'use strict';
 function create({THREE:T,scene,bounds}){
  const count=650,positions=new Float32Array(count*6),seed=new Float32Array(count*3);
+ let quality='high',endingTarget=0,ending=0,reducedMotion=false;
  let state=92741;const rand=()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296;};
  for(let i=0;i<count;i++){seed[i*3]=rand();seed[i*3+1]=rand();seed[i*3+2]=rand();}
  const g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(positions,3));
@@ -12,15 +13,19 @@ function create({THREE:T,scene,bounds}){
  const ripple=new T.InstancedMesh(rippleGeo,rippleMat,45);ripple.frustumCulled=false;scene.add(ripple);
  const dummy=new T.Object3D();
  function update(dt,t,player){
-  const px=player?.x||0,pz=player?.z||15;
-  for(let i=0;i<count;i++){
+  const px=Number.isFinite(player?.x)?player.x:0,pz=Number.isFinite(player?.z)?player.z:15;
+  ending+=(endingTarget-ending)*(1-Math.exp(-Math.max(0,dt)*.7));
+  m.opacity=(reducedMotion?.075:.16)*(1-ending*.68);rippleMat.opacity=.17*(1-ending*.72);
+  const drift=Math.sin(t*.11)*.065,visibleCount=quality==='low'?300:count;
+  for(let i=0;i<visibleCount;i++){
    const n=i*3,x=px+(seed[n]-.5)*27,z=pz+(seed[n+2]-.5)*30,y=12-((t*8+seed[n+1]*12)%12),j=i*6;
    // The side chapel is sheltered; no rain falls through its roof remnant.
    const covered=x<-6&&z>-.2&&z<6.5;
    positions[j]=x;positions[j+1]=covered?-50:y;positions[j+2]=z;
-   positions[j+3]=x-.026;positions[j+4]=covered?-50:y-.25;positions[j+5]=z+.055;
+   positions[j+3]=x-.026-drift;positions[j+4]=covered?-50:y-(reducedMotion?.17:.30);positions[j+5]=z+.055;
   }
   g.attributes.position.needsUpdate=true;
+  if(!ripple.visible)return;
   for(let i=0;i<45;i++){
    const x=px+(seed[i*3]-.5)*20,z=pz+(seed[i*3+2]-.5)*20;
    const allowed=bounds.some(b=>x>b.x-b.w/2&&x<b.x+b.w/2&&z>b.z-b.d/2&&z<b.z+b.d/2)&&!(x<-6&&z>-.2&&z<6.5);
@@ -29,7 +34,11 @@ function create({THREE:T,scene,bounds}){
   }
   ripple.instanceMatrix.needsUpdate=true;
  }
- return {update,setQuality:q=>{rain.geometry.setDrawRange(0,q==='low'?600:count*2);ripple.visible=q!=='low';},dispose(){scene.remove(rain,ripple);g.dispose();m.dispose();rippleGeo.dispose();rippleMat.dispose();}};
+ return {update,
+  setQuality(q){quality=q==='low'?'low':'high';rain.geometry.setDrawRange(0,quality==='low'?600:count*2);ripple.visible=quality!=='low'&&!reducedMotion;},
+  setEnding(value){endingTarget=Math.max(0,Math.min(1,Number(value)||0));},
+  setReducedMotion(value){reducedMotion=!!value;ripple.visible=quality!=='low'&&!reducedMotion;},
+  dispose(){scene.remove(rain,ripple);g.dispose();m.dispose();rippleGeo.dispose();rippleMat.dispose();}};
 }
 root.AshenWeather={create};
 })(window);

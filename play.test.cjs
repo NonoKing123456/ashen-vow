@@ -8,24 +8,25 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 async function boot(){
  const T={...require('./vendor/three.min.js')},elements=new Map(),listeners={},storage=new Map();
  const element=id=>{if(elements.has(id))return elements.get(id);const e={id,style:{},dataset:{},hidden:true,events:{},focus(){},addEventListener(t,f){this.events[t]=f},setPointerCapture(){},getBoundingClientRect(){return {left:0,top:0,width:100,height:100}}};elements.set(id,e);return e;};
- let callbacks,updates,now=1000;
+ let callbacks,updates,now=1000,lastMemory=null,lastShrine=null,lastJournal=null;
  const scene=new T.Scene(),camera=new T.PerspectiveCamera(51,16/9,.1,200),renderer={domElement:element('game'),capabilities:{getMaxAnisotropy:()=>1}};
  T.Raycaster=class{set(){}intersectObjects(){return []}};
  const noop=()=>{};
  const ui={getSettings:()=>({audio:false,quality:'medium'}),isModalOpen:()=>false,update:v=>updates=v};
  for(const name of ['setLoading','setCheckpoint','setStarted','chapter','updateStep','setPaused','notify','damage','showDamage','setContext','setLock','result','hideHelp'])ui[name]=noop;
+ ui.showMemory=e=>lastMemory=e;ui.showShrine=e=>lastShrine=e;ui.showJournal=e=>lastJournal=e;
  const levelBounds=[{x:0,z:15.5,w:9,d:13},{x:0,z:1.5,w:12,d:17},{x:-8.5,z:3.25,w:7,d:6.5},{x:0,z:-8,w:6.2,d:4},{x:0,z:-21,w:23,d:26}];
- const level={root:new T.Group(),bounds:levelBounds,obstacles:[],spawn:{x:0,z:18},bossSpawn:{x:0,z:-25},patrols:[{x:-1.8,z:8},{x:2.2,z:-2}],checkpoints:[{x:-9,z:3,kind:'checkpoint',radius:1.8}],setGate:noop,update:noop};scene.add(level.root);
+ const level={root:new T.Group(),bounds:levelBounds,obstacles:[],spawn:{x:0,z:18},bossSpawn:{x:0,z:-25},patrols:[{x:-1.8,z:8},{x:2.2,z:-2}],checkpoints:[{x:-9,z:3,kind:'checkpoint',radius:1.8}],discoveries:[{id:'arrival',name:'破盾',x:2.8,z:16.7,radius:1.7,kind:'memory'},{id:'chapel',name:'祷书',x:-8.3,z:5.2,radius:1.7,kind:'memory'},{id:'warden',name:'空冠',x:7.4,z:-19.8,radius:1.7,kind:'memory'}],bell:{x:0,z:-29.5,radius:2,kind:'bell'},setDiscovery:noop,setBossDefeated:noop,ringBell:()=>true,setGate:noop,update:noop};scene.add(level.root);
  const ctx={console,Math,Float32Array,Uint8Array,Map,Set,THREE:T,innerWidth:1280,innerHeight:720,document:{getElementById:element,body:element('body'),hidden:false,addEventListener(t,f){listeners['document:'+t]=f}},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},addEventListener(t,f){listeners[t]=f},requestAnimationFrame:noop,
   AshenRender:{create:()=>({scene,camera,renderer,setQuality:noop,render:noop,resize:noop})},AshenAudio:{create:()=>({setEnabled:noop,unlock:noop,play:noop,update:noop})},AshenUI:{create:c=>{callbacks=c;return ui}},AshenLevel:{create:()=>level},
   AshenCharacters:{load:async()=>{},createKnight(){const root=new T.Group(),blade=new T.Group();root.add(blade);scene.add(root);return {root,weapon:{group:blade,base:new T.Vector3(0,0,.20),tip:new T.Vector3(0,0,2.05)},animate(o){blade.position.set(.12,1.05,0);let yaw=0;if(o.attack&&o.state==='attack'){const pose=ctx.AshenCombat.samplePose(o.attack,o.time);yaw=(pose.localStrike-.5)*1.0;this.weapon.tip.z=o.attack.reach;}blade.rotation.y=yaw;root.updateMatrixWorld(true);},setHit:noop};}}
  };
  ctx.location={hostname:'localhost'};ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);
- vm.runInContext(fs.readFileSync(path.join(__dirname,'feel.js'),'utf8'),ctx);
- const source=fs.readFileSync(path.join(__dirname,'game.js'),'utf8').replace(/\}\)\(\);\s*$/,'globalThis.qa={player,enemies,boss,level,camera,start,retry,frame,updatePlayer,damage,change,resolveHits,get flags(){return {dead,won,paused,checkpoint,gateOpen,locked,time};}};})();');
+ for(const file of ['feel.js','journey.js','tactics.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8'),ctx);
+ const source=fs.readFileSync(path.join(__dirname,'game.js'),'utf8').replace(/\}\)\(\);\s*$/,'globalThis.qa={player,enemies,boss,level,camera,start,retry,frame,updatePlayer,damage,change,resolveHits,journey,updateContext,interact,selectRelic,get flags(){return {dead,won,bossDefeated,paused,checkpoint,gateOpen,locked,time};}};})();');
  await vm.runInContext(source,ctx);const q=ctx.qa;
  q.press=(code)=>listeners.keydown({code,repeat:false,preventDefault:noop});q.release=(code)=>listeners.keyup({code});q.tick=(n=1)=>{for(let i=0;i<n;i++){now+=1000/60;q.frame(now)}};
- q.startPublic=(resume=false)=>callbacks.onStart({continue:resume});q.ui=()=>updates;q.storage=storage;q.tick();return q;
+ q.startPublic=(resume=false)=>callbacks.onStart({continue:resume});q.ui=()=>updates;q.callbacks=()=>callbacks;q.memory=()=>lastMemory;q.shrine=()=>lastShrine;q.journal=()=>lastJournal;q.storage=storage;q.mouseMove=(x,y)=>element('game').events.pointermove({clientX:x,clientY:y,pointerType:'mouse'});q.tick();return q;
 }
 
 test('controller runs real swept blade damage and does not damage targets during anticipation',async()=>{
@@ -115,5 +116,32 @@ test('scripted public controls clear both sentinels, save chapel, open gate and 
  walkTo(q,-4,3.3);walkTo(q,0,3);fight(q,q.enemies[1]);
  walkTo(q,0,-5.2);tap(q,'KeyF');q.tick(3);assert.equal(q.flags.gateOpen,true);
  walkTo(q,0,-12);fight(q,q.boss);
- assert.equal(q.flags.won,true);assert.equal(q.boss.hp,0);assert.ok(q.player.hp>0);assert.equal(q.enemies.filter(e=>e.hp<=0).length,3);
+ assert.equal(q.flags.bossDefeated,true);assert.equal(q.flags.won,false);walkTo(q,0,-28.8);tap(q,'KeyF');q.tick(2);assert.equal(q.flags.won,true);assert.equal(q.boss.hp,0);assert.ok(q.player.hp>0);assert.equal(q.enemies.filter(e=>e.hp<=0).length,3);
+});
+
+
+test('a real memory interaction rewards only once and persists without activating a false checkpoint',async()=>{
+ const q=await boot();q.startPublic();walkTo(q,2.8,16.7);q.player.flasks=2;tap(q,'KeyF');q.tick(2);assert.equal(q.memory().id,'arrival');assert.equal(q.player.flasks,3);tap(q,'KeyF');q.tick(2);assert.equal(q.player.flasks,3);const data=JSON.parse(q.storage.get('ashen-vow-checkpoint'));assert.equal(data.active,false);assert.deepEqual(data.journey.memories,['arrival']);q.retry();assert.equal(q.player.z,18);assert.equal(q.journey.snapshot().memories.length,1);
+});
+test('shrine blessing cannot be equipped remotely and is preserved through a retry',async()=>{
+ const q=await boot();q.startPublic();q.selectRelic('edge');assert.equal(q.journey.modifiers().damage,1);for(const e of q.enemies)e.aggro=false;q.player.x=-9;q.player.z=3;q.interact();assert.equal(q.flags.checkpoint,true);assert.ok(q.shrine());q.selectRelic('wind');assert.equal(q.player.maxStamina,125);assert.equal(q.player.stamina,125);q.selectRelic('ember');assert.equal(q.player.max,145);assert.equal(q.player.maxStamina,100);q.retry();assert.equal(q.player.max,145);assert.equal(q.player.hp,145);assert.equal(q.journey.snapshot().relic,'ember');
+});
+test('rolling then attacking opens a thrust and a timed guard gives one counter only',async()=>{
+ const q=await boot();q.startPublic();tap(q,'Space');q.tick(40);tap(q,'KeyJ');q.tick(2);assert.equal(q.player.attack.kind,'dodgeAttack');q.retry();const e=q.enemies[0];q.player.x=e.x;q.player.z=e.z+1.6;q.player.yaw=Math.PI;q.press('KeyL');q.updatePlayer(.01);q.damage(q.player,e,{damage:19,type:'sweep',poise:18});q.release('KeyL');tap(q,'KeyJ');q.tick(2);assert.equal(q.player.attack.counter,true);assert.equal(q.journey.snapshot().stats.parries,1);q.tick(60);tap(q,'KeyJ');q.tick(2);assert.equal(!!q.player.attack.counter,false);
+});
+test('journal and return-to-title callbacks preserve progress and clear held input',async()=>{
+ const q=await boot();q.startPublic();tap(q,'Tab');assert.ok(q.journal());q.press('KeyW');q.callbacks().onTitle();const before=q.player.z;q.tick(30);assert.equal(q.player.z,before);assert.ok(q.storage.get('ashen-vow-checkpoint'));q.startPublic(true);q.tick(30);assert.equal(q.player.z,18);
+});
+
+
+test('a half-health warden finishes its committed attack before entering second phase',async()=>{
+ const q=await boot();q.startPublic();q.boss.aggro=true;q.boss.hp=179;q.change(q.boss,'attack',require('./feel.js').getBossMove(0,1));q.boss.t=.25;q.tick();assert.equal(q.boss.state,'attack');assert.equal(q.boss.phase,1);q.tick(160);assert.equal(q.boss.phase,2);
+});
+test('pausing freezes the earned roll-counter window until the player resumes',async()=>{
+ const q=await boot();q.startPublic();tap(q,'Space');q.tick(40);tap(q,'Escape');q.tick(120);tap(q,'Escape');tap(q,'KeyJ');q.tick(2);assert.equal(q.player.attack.kind,'dodgeAttack');
+});
+
+
+test('mouse look rotates the camera without a held button and stops while paused',async()=>{
+ const q=await boot();q.startPublic();q.tick(40);const before=q.camera.position.clone();q.mouseMove(200,200);q.mouseMove(320,240);q.tick(40);assert.ok(q.camera.position.distanceTo(before)>.4);tap(q,'Escape');const paused=q.camera.position.clone();q.mouseMove(500,300);q.tick(40);assert.ok(q.camera.position.distanceTo(paused)<.08);
 });

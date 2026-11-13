@@ -1,74 +1,47 @@
-# 灰烬誓约 · 雨夜誓约 / THE LAST BELL
+# 灰烬誓约 · 钟鸣之章 / ASHEN VOW
 
-A compact, original third-person action level: arrival court, two sentinels,
-optional chapel checkpoint, opening gate and two-phase Warden. Browser-local
-save and settings; no account or backend is required.
+[直接游玩](https://nonoking123456.github.io/ashen-vow/?v=12) · [独立 GitHub 仓库](https://github.com/NonoKing123456/ashen-vow)
 
-## Standalone project
+一个可直接在浏览器游玩的原创第三人称动作短关卡。穿过雨夜回廊，挑战两名守卫，在余火小堂选择赐福，面对二阶段无冠守望者，亲手敲响最后的古钟。
 
-This repository contains only Ashen Vow. It has its own source, assets, tests
-and deployment; it does not use the V System Visualizer repository.
+## 钟鸣之章 · v12
 
-Run `npm start` and open http://127.0.0.1:8080. Run `npm test` for the 42 checks.
-There are no package dependencies to install. For GitHub Pages, publish the
-`main` branch root directory. All resource paths are relative.
+- **动作**：重做前、后、侧向与斜向翻滚，收身—转体—落脚与真实移动方向和时长一致。通过蒙皮接地探针避免明显穿地；修复武器挂点重复旋转和收招反转。按模型原始步幅同步走跑，增加倒退、侧移、转向与急停惯性。
+- **战斗**：翻滚后的短窗口可接突刺；精准格挡强化下一剑。守卫轮流进攻、支援侧移，超出范围后归位。Boss 按距离、喝药和持续格挡选择可读的招式，半血阶段转换等待当前攻击完成。暂停保留反击窗口。
+- **探索与成长**：三处有实体物件的可读残响，首次发现补充一瓶药；小堂提供生命、耐力、剑伤三选一赐福，可重新选择且不叠加。地图手记记录玩家位置、发现与战斗统计。
+- **终章**：击败 Boss 后仍可探索；走到实体钟绳前按 F 敲钟结束。钟摆、声波、雨势和灯光共同变化。
+- **操作**：键鼠默认移动鼠标即转镜头，无需按住拖动；支持 Pointer Lock，Esc 释放并暂停。不支持锁定的浏览器可直接悬停控制镜头。标准手柄支持战斗、双摇杆、冲刺、菜单与可用时的震动。
+- **呈现与设置**：保留本地 PBR 材质与雨夜风格，增加云层、独立音乐/音效/主音量、灵敏度、减少动态和引导开关。弹窗保留暂停状态；可返回标题、继续与重试。进度与设置只保存在当前浏览器。
 
-## Rain-night release (v11)
+## 操作
 
-- Locally served CC0 photographic stone surfaces: color, normal and roughness
-  with world-scale UV projection. Wet surfaces, world-space rain, impact
-  ripples, ivy silhouettes and sheltered chapel ambience.
-- Posture now accumulates from heavy strikes and timed guards. A break produces
-  a golden vulnerability cue. Approach within 1.9 meters and press F to thrust
-  for 100 damage. The thrust still needs real blade contact and only hits its
-  chosen target. The second sentinel alternates cuts with a delayed thrust.
-- Camera collision uses scene obstacle bounds instead of traversing all scenery
-  triangles. Adaptive resolution slowly adjusts between 72% and 100%, with high
-  and low settings retained. No universal frame-rate claim is made.
-- Character transfer reduced from 9.71 MB to 3.39 MB by resampling embedded
-  textures; mesh, skin weights, skeleton and all clips are preserved. All runtime
-  assets are now served from the same deployment. No CDN is required to play.
+| 操作 | 键鼠 | 标准手柄（Xbox 命名） |
+| --- | --- | --- |
+| 移动 / 冲刺 | WASD / Shift | 左摇杆 / 按住 L3 |
+| 镜头 | 移动鼠标 / 滚轮缩放 | 右摇杆 |
+| 连击 / 重击 | 左键或 J / K | RB / RT |
+| 翻滚 / 喝药 | Space / E | B / X |
+| 格挡 / 锁定 | 右键或 L / Q | LB / 按下右摇杆 |
+| 互动 / 处决 | F | Y |
+| 手记 / 暂停 | Tab 或 M / Esc | Select / Start |
 
-## Actual character art
+## 本地开发与检查
 
-CC0 Knight by Patch/anymove: a coherent 59,281-triangle weighted mesh, 22 bones,
-UVs and PBR maps. This is a licensed base asset, not an original sculpture.
-Idle, Walk, Run and Hit use source animation; weapon strikes and the new
-execution thrust are authored on its weighted bones. The original unarmed
-Attack clip is not repurposed as a sword swing. Full provenance is in
-`assets/ASSET_CREDITS.md`.
+需要 Node 20+，无运行时安装依赖：
 
-## Controls
-
-WASD move; Shift sprint; drag orbit; wheel zoom. J / left click three-cut chain;
-K heavy; Space directional roll; Q lock; L / right click guard (first 0.16 s is
-a timed guard); E heal; F checkpoint / gate / exposed-target execution.
-Escape pauses; R retries after defeat. Touch controls are available.
-
-## Validation
-
-Serve this directory over HTTP. Run:
-
-```
-node --test feel.test.cjs play.test.cjs camera.test.cjs asset.test.cjs
+```sh
+npm start
+npm test
 ```
 
-42 tests cover swept-blade and height collision, attack/guard/roll timing,
-camera obstacle bounds, guarded posture breaks, contextual execution, healing
-interruptions, checkpoint persistence, a control-only complete level through
-both boss phases, and actual production-GLB animation/blade contacts.
+访问 http://127.0.0.1:8080 。GitHub Pages 从 `main` 根目录发布，所有运行资源使用相对路径，无 CDN 依赖。
 
-Asset tests decode the real GLB mesh, bones and clips with the production
-GLTFLoader; only image decoding is stubbed in Node. Controller tests explicitly
-use a small articulated sword fixture. Browser QA checks the actual render,
-keyboard controls and native gameplay; it never modifies game HP or positions.
+93 项自动检查覆盖真实 GLB 剑刃碰撞与翻滚接地、战术承诺、格挡/反击、方向与镜头输入、设置/混音、存档迁移、真实关卡障碍可达性，以及仅通过公开键盘控制完成两守卫、检查点、开门、两阶段 Boss 和敲钟的流程。控制器流程使用可控剑刃夹具；资产测试使用生产 GLB。手柄以可注入 Gamepad API 验证，未使用实体手柄验收。
 
-## Files
+## 资源与结构
 
-`game.js`: controller and level flow. `feel.js`: hit/timing/camera rules.
-`characters.js` and `motion.js`: actual mesh and bones. `level.js`, `surfaces.js`
-and `weather.js`: environment. `render.js`, `audio.js`, `ui.js`: presentation.
+Knight 为 Patch/anymove 的 CC0 真实蒙皮资产：59,281 三角形、22 骨骼、UV 与 PBR 贴图。它是有明确许可的基础资产；不是自行雕刻的人体模型。原始待机/走跑/受击使用来源动画，持剑攻击和翻滚为代码驱动骨骼动作。完整出处见 `assets/ASSET_CREDITS.md`。
 
-First load transfers about 5.2 MB of model and surface images plus scripts.
-WebGL hardware acceleration is recommended. World architecture remains
-procedurally authored; it is not a scanned environment or a commercial game.
+`game.js` 负责关卡控制与整合，`feel.js` 管理时序与碰撞，`tactics.js` 负责敌人决策，`journey.js` 管理旅途状态；`characters.js`/`motion.js` 负责角色，`level.js`/`surfaces.js`/`weather.js` 负责场景；`render.js`、`audio.js`、`controls.js`、`ui.js` 分别负责呈现、声音、手柄与界面。
+
+这是持续改进的浏览器动作短关卡。场景建筑仍为程序化制作；自动检查通过不等于已经达到商业游戏的美术、动作捕捉或性能标准。

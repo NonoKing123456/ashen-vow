@@ -1,0 +1,38 @@
+[
+  {
+    "id": "cobblestone_floor_08",
+    "kind": "color",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/cobblestone_floor_08/cobblestone_floor_08_diff_1k.jpg",
+    "file": "cobblestone_floor_08_color.jpg"
+  },
+  {
+    "id": "cobblestone_floor_08",
+    "kind": "normal",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/cobblestone_floor_08/cobblestone_floor_08_nor_gl_1k.jpg",
+    "file": "cobblestone_floor_08_normal.jpg"
+  },
+  {
+    "id": "cobblestone_floor_08",
+    "kind": "roughness",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/cobblestone_floor_08/cobblestone_floor_08_rough_1k.jpg",
+    "file": "cobblestone_floor_08_roughness.jpg"
+  },
+  {
+    "id": "stone_brick_wall_001",
+    "kind": "color",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/stone_brick_wall_001/stone_brick_wall_001_diff_1k.jpg",
+    "file": "stone_brick_wall_001_color.jpg"
+  },
+  {
+    "id": "stone_brick_wall_001",
+    "kind": "normal",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/stone_brick_wall_001/stone_brick_wall_001_nor_gl_1k.jpg",
+    "file": "stone_brick_wall_001_normal.jpg"
+  },
+  {
+    "id": "stone_brick_wall_001",
+    "kind": "roughness",
+    "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/stone_brick_wall_001/stone_brick_wall_001_rough_1k.jpg",
+    "file": "stone_brick_wall_001_roughness.jpg"
+  }
+]

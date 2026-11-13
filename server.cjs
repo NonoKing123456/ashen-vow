@@ -1,0 +1,4 @@
+const http=require('node:http'),fs=require('node:fs/promises'),path=require('node:path');
+const root=__dirname,port=Number(process.env.PORT)||8080;
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.jpg':'image/jpeg','.glb':'model/gltf-binary'};
+http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost'),name=decodeURIComponent(url.pathname);const file=path.resolve(root,'.'+(name==='/'?'/index.html':name));if(file!==root&&!file.startsWith(root+path.sep)){res.writeHead(403);res.end();return;}const data=await fs.readFile(file);res.writeHead(200,{'Content-Type':types[path.extname(file)]||'application/octet-stream','X-Content-Type-Options':'nosniff'});res.end(data);}catch(e){res.writeHead(404);res.end('Not found');}}).listen(port,'127.0.0.1',()=>console.log('Ashen Vow: http://127.0.0.1:'+port));

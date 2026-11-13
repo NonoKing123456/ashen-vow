@@ -1,0 +1,13 @@
+{
+  "name": "ashen-vow",
+  "version": "0.11.0",
+  "private": true,
+  "description": "灰烬誓约：最后的钟声 — standalone third-person action game",
+  "scripts": {
+    "test": "node --test feel.test.cjs play.test.cjs camera.test.cjs asset.test.cjs",
+    "start": "node server.cjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

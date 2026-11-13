@@ -6,7 +6,7 @@ function create(actor,T){
  const rootQ=new T.Quaternion(),parentQ=new T.Quaternion(),q=new T.Quaternion(),delta=new T.Quaternion();
  const p0=V(),p1=V(),p2=V(),along=V(),bend=V(),desiredElbow=V(),goal=V(),pole=V(),dir=V(),current=V(),wrist=V(),offset=V(),axisWorld=V(),requested=V();
  const zero=V(),swordAxis=V(0,-1,0),shieldAxis=V(0,0,1);
- let environment=[];
+ let environment=[],sourcePoseMode=false;
  function probes(object){
   if(!object)return [];object.updateWorldMatrix(true,true);const inverse=object.matrixWorld.clone().invert(),cloud=[];
   object.traverse(mesh=>{if(!mesh.isMesh)return;const p=mesh.geometry.attributes.position,matrix=inverse.clone().multiply(mesh.matrixWorld);for(let i=0;i<p.count;i++)cloud.push(V().fromBufferAttribute(p,i).applyMatrix4(matrix));});
@@ -62,17 +62,30 @@ function create(actor,T){
   rig.rightHand.getWorldQuaternion(q);q.multiply(actor.weapon.grip.bindInverse).multiply(actor.weapon.grip.orientation);
   return {u:fore.sub(upper).normalize().applyQuaternion(rootQ).toArray(),f:hand.sub(rig.rightFore.getWorldPosition(V())).normalize().applyQuaternion(rootQ).toArray(),s:swordAxis.clone().applyQuaternion(q).applyQuaternion(rootQ).normalize().toArray(),x:0,y:0};
  }
+ function calibratedCarry(leftAmount,rightAmount){
+  if(!actor.shield?.grip)return;
+  const left=rig.leftUpper.getWorldPosition(V()).sub(rig.rightUpper.getWorldPosition(V())).normalize();
+  if(leftAmount>.00001){const position=actor.shield.getWorldPosition(V()),orientation=actor.shield.getWorldQuaternion(new T.Quaternion());position.addScaledVector(left,.12*root.scale.x*leftAmount);position.y+=.12*root.scale.y*leftAmount;movePalm('left',position,orientation);}
+  if(rightAmount>.00001){root.getWorldQuaternion(rootQ);const position=actor.weapon.group.getWorldPosition(V()),orientation=actor.weapon.group.getWorldQuaternion(new T.Quaternion());position.addScaledVector(left,-.035*root.scale.x*rightAmount).addScaledVector(V(0,0,1).applyQuaternion(rootQ),.017*root.scale.x*rightAmount);position.y+=.035*root.scale.y*rightAmount;movePalm('right',position,orientation);}
+ }
  function carries(o){
+  sourcePoseMode=!!o.sourcePose;
   environment=(o.obstacles||[]).filter(ob=>Math.abs(root.position.x-ob.x)<(ob.w||ob.r*2||0)*.5+2.2*root.scale.x&&Math.abs(root.position.z-ob.z)<(ob.d||ob.r*2||0)*.5+2.2*root.scale.x);actor.blockedWeapon=null;
-  if(o.dead||o.rolling)return;
+  if(o.dead||o.rolling){actor.updateEquipment();if(o.sourcePose)calibratedCarry(o.leftCarryAmount||0,o.rightCarryAmount||0);return;}
   const c=clamp(o.combat||0,0,1),g=clamp(Math.max(o.guard||0,o.healing?.65:0),0,1),run=clamp((o.speed-2)/2.4,0,1),phase=(o.phase||0)*Math.PI*4;
   const sway=Math.sin(phase)*.018*run,bob=Math.cos(phase*2)*.007*clamp(o.speed/2,0,1),side=actor.anatomyRightSign||-1;
-  if(!o.attacking)readyRight(o);
-  if(actor.shield?.grip){
+  if(!o.sourcePose&&!o.attacking)readyRight(o);
+  if(!o.sourcePose&&actor.shield?.grip){
    const retract=o.attacking?1:0,hand=V(-side*(.39-.23*g+.025*retract),1.01+.33*g+.13*run+.13*retract+bob,.14+.24*g-.035*retract);
    hold('left',hand,V(-side*.88*(1-g),-.08*(1-g),.47+.53*g),V(-side*.67,1.31,.01));
   }
   actor.updateEquipment();
+  if(o.sourcePose&&actor.shield?.grip){
+   // Calibrate the common armed carry before contact: the free-arm source
+   // leaves insufficient room for a solid shield beside the plated torso.
+   // Keep this same shoulder-relative clearance through locomotion/recovery.
+   calibratedCarry(o.leftCarryAmount??1,o.rightCarryAmount??1);
+  }
   if(wallContact('left')){hold('left',V(-side*.27,1.24,.01),V(-side,0,0),V(-side*.36,1.24,-.22));actor.updateEquipment();}
   const contact=wallContact('right');if(contact){
    if(o.attacking)actor.blockedWeapon=contact;
@@ -85,29 +98,53 @@ function create(actor,T){
    const sign=handSide==='right'?side:-side;hold(handSide,localPoint,localDirection,V(sign*.36,1.24,-.22));actor.updateEquipment();
   }
  }
- function tuck(amount,rollAxis){
-  if(amount<.015)return;const strength=Math.min(1,amount*1.6),side=actor.anatomyRightSign||-1;
-  for(const handSide of ['right','left']){
-   if(handSide==='left'&&!actor.shield?.grip)continue;
-   const item=handSide==='right'?actor.weapon.group:actor.shield,axis=handSide==='right'?swordAxis:shieldAxis;
-   actor.updateEquipment();item.getWorldPosition(localPoint);root.worldToLocal(localPoint);
-   const target=handSide==='right'?V(side*.37,1.08,-.10):V(-side*.40,1.08,-.02);localPoint.lerp(target,strength);
-   item.getWorldQuaternion(equipmentQ);root.getWorldQuaternion(rootQ);localDirection.copy(axis).applyQuaternion(equipmentQ).applyQuaternion(rootQ.invert());
-   const wanted=handSide==='right'?V(rollAxis.x,rollAxis.y,rollAxis.z):V(-side,0,0);
-   if(handSide==='right'&&wanted.dot(target.clone().sub(V(0,1.03,.04)))<0)wanted.negate();
-   localDirection.lerp(wanted,strength).normalize();hold(handSide,localPoint,localDirection,V((handSide==='right'?side:-side)*.56,1.32,-.13));
-  }
- }
  function ground({rolling=false,dead=false,state='',running=false,contact=1}={}){
   const full=rolling||dead||state==='stagger',feet=!full&&actor.footBounds?actor.footBounds():null;
   const min=feet?Math.min(feet.left.min,feet.right.min):full&&actor.groundBounds?actor.groundBounds().min:NaN;
   if(!Number.isFinite(min))return;
   const floor=root.position.y+.018*root.scale.y;
   let correction=floor-min;
+  // A real roll includes a brief airborne phase. Correct penetration without
+  // pulling an authored jump back down to a forced contact every frame.
+  if(rolling)correction=Math.max(0,correction);
   if(!full&&correction<0&&(running&&contact<.45))correction=0;
   if(!full)correction=clamp(correction,-.035,.12*root.scale.y);
   actor.pivot.position.y+=correction/root.scale.y;
   actor.root.updateWorldMatrix(true,true);
+ }
+ const plants={left:{active:false,blocked:false,point:V(),orientation:new T.Quaternion()},right:{active:false,blocked:false,point:V(),orientation:new T.Quaternion()}},lastPlantRoot=V(Infinity,0,0),plantUpperQ=new T.Quaternion(),plantKneeQ=new T.Quaternion(),plantFootQ=new T.Quaternion();
+ function plantFeet({frame,dt,speed=0,yawRate=0,enabled=true}){
+  const discontinuity=lastPlantRoot.distanceTo(root.position)>.30*root.scale.x;lastPlantRoot.copy(root.position);
+  const permitted=enabled&&speed>.2&&speed<3.1*root.scale.x&&Math.abs(yawRate||0)<.9&&!discontinuity;
+  actor.footPlant={};root.getWorldQuaternion(rootQ);const kneeForward=V(0,0,.24*root.scale.x).applyQuaternion(rootQ);
+  for(const side of ['left','right']){
+   const lock=plants[side],upper=rig[side+'Thigh'],knee=rig[side+'Shin'],foot=rig[side+'Foot'];if(!upper||!knee||!foot)continue;
+   const candidate=permitted&&!!frame?.feet?.[side]?.lockedCandidate;
+   if(!candidate){lock.active=false;lock.blocked=false;}
+   else if(!lock.active&&!lock.blocked){foot.getWorldPosition(lock.point);foot.getWorldQuaternion(lock.orientation);lock.active=true;}
+   if(lock.active){
+    foot.getWorldPosition(p2);const correction=p2.distanceTo(lock.point);
+    if(correction>.055*root.scale.x){lock.active=false;lock.blocked=true;}
+    else{
+     plantUpperQ.copy(upper.quaternion);plantKneeQ.copy(knee.quaternion);plantFootQ.copy(foot.quaternion);
+     knee.getWorldPosition(pole);pole.add(kneeForward);arm(upper,knee,foot,lock.point,pole);
+     foot.parent.getWorldQuaternion(parentQ);foot.quaternion.copy(parentQ.invert()).multiply(lock.orientation).normalize();foot.updateWorldMatrix(false,true);
+     if(foot.getWorldPosition(p2).distanceTo(lock.point)>.003*root.scale.x){upper.quaternion.copy(plantUpperQ);knee.quaternion.copy(plantKneeQ);foot.quaternion.copy(plantFootQ);upper.updateWorldMatrix(false,true);lock.active=false;lock.blocked=true;}
+    }
+   }
+   foot.getWorldPosition(p2);actor.footPlant[side]={active:lock.active,error:lock.active?p2.distanceTo(lock.point):0,anchor:lock.point.clone()};
+  }
+ }
+ const restFeet={};root.getWorldQuaternion(rootQ);
+ for(const side of ['left','right']){const foot=rig[side+'Foot'];if(foot){restFeet[side]={point:root.worldToLocal(foot.getWorldPosition(V())),orientation:rootQ.clone().invert().multiply(foot.getWorldQuaternion(new T.Quaternion()))};}}
+ function braceFeet(amount,travel){
+  if(amount<.001)return;
+  for(const side of ['left','right']){
+   const rest=restFeet[side],upper=rig[side+'Thigh'],knee=rig[side+'Shin'],foot=rig[side+'Foot'];if(!rest||!upper||!knee||!foot)continue;
+   const lead=side==='left'?1:-1,target=rest.point.clone().addScaledVector(travel,lead*.09*amount);root.localToWorld(target);
+   const kneePole=root.localToWorld(V(rest.point.x*1.4,.52,.48));arm(upper,knee,foot,target,kneePole);
+   root.getWorldQuaternion(rootQ);q.copy(rootQ).multiply(rest.orientation);foot.parent.getWorldQuaternion(parentQ);foot.quaternion.copy(parentQ.invert()).multiply(q).normalize();foot.updateWorldMatrix(false,true);
+  }
  }
  const surfacePoint=V(),gripPoint=V(),equipmentQ=new T.Quaternion(),worldAxis=V(),localDirection=V(),localPoint=V(),localPole=V();
  function meshFloor(object){
@@ -118,10 +155,22 @@ function create(actor,T){
   localPoint.copy(position);root.worldToLocal(localPoint);root.getWorldQuaternion(rootQ);localDirection.copy(direction).applyQuaternion(rootQ.invert());
   elbow.getWorldPosition(localPole);localPole.y+=.035*root.scale.y;root.worldToLocal(localPole);hold(side,localPoint,localDirection,localPole);
  }
- function bodyCapsules(){
-  const list=[],add=(from,to,r)=>{if(from&&to)list.push({a:from.getWorldPosition(V()),b:to.getWorldPosition(V()),r:r*root.scale.x})};
-  add(rig.hips,rig.chest,.195);add(rig.chest,rig.neck,.16);add(rig.head,rig.head,.135);add(rig.leftThigh,rig.leftShin,.12);add(rig.rightThigh,rig.rightShin,.12);add(rig.leftShin,rig.leftFoot,.075);add(rig.rightShin,rig.rightFoot,.075);return list;
- }
+ const capsuleModels=[
+  {a:rig.hips,b:rig.chest,joints:/^(pelvis|spine)/i,r:.195},{a:rig.chest,b:rig.neck,joints:/^chest$/i,r:.16},{a:rig.head,b:rig.head,joints:/^head$/i,r:.135},
+  {a:rig.leftThigh,b:rig.leftShin,joints:/^thigh_L$/i,r:.12},{a:rig.rightThigh,b:rig.rightShin,joints:/^thigh_R$/i,r:.12},
+  {a:rig.leftShin,b:rig.leftFoot,joints:/^shin_L$/i,r:.075},{a:rig.rightShin,b:rig.rightFoot,joints:/^shin_R$/i,r:.075}
+ ].filter(c=>c.a&&c.b);
+ // Measure the actual bind armour once. The old 12cm thigh capsule excluded
+ // several centimetres of weighted plate. Runtime never scans the full mesh.
+ root.updateWorldMatrix(true,true);
+ for(const c of capsuleModels){c.start=c.a.getWorldPosition(V());c.end=c.b.getWorldPosition(V());c.axis=c.end.clone().sub(c.start);c.length=c.axis.lengthSq();c.measured=0;}
+ actor.visual.traverse(mesh=>{if(!mesh.isSkinnedMesh)return;const p=mesh.geometry.attributes.position,si=mesh.geometry.attributes.skinIndex,sw=mesh.geometry.attributes.skinWeight;
+  for(let i=0;i<p.count;i++){let best=-1,joint=0;for(const key of ['X','Y','Z','W']){const w=sw['get'+key](i);if(w>best){best=w;joint=si['get'+key](i);}}const name=mesh.skeleton.bones[joint]?.name||'',point=V().fromBufferAttribute(p,i).applyMatrix4(mesh.matrixWorld);
+   for(const c of capsuleModels)if(c.joints.test(name)){const u=c.length?clamp(point.clone().sub(c.start).dot(c.axis)/c.length,0,1):0;c.measured=Math.max(c.measured,point.distanceTo(c.start.clone().addScaledVector(c.axis,u))/root.scale.x);}
+  }
+ });
+ for(const c of capsuleModels)c.r=Math.max(c.r,c.measured);
+ function bodyCapsules(){return capsuleModels.map(c=>({a:c.a.getWorldPosition(V()),b:c.b.getWorldPosition(V()),r:c.r*root.scale.x}));}
  function segmentDistance(a,b,c,d){
   const u=b.clone().sub(a),v=d.clone().sub(c),w=a.clone().sub(c),aa=u.dot(u),bb=u.dot(v),cc=v.dot(v),dd=u.dot(w),ee=v.dot(w),den=aa*cc-bb*bb;
   let s=den>1e-9?clamp((bb*ee-cc*dd)/den,0,1):0,t=cc>1e-9?clamp((bb*s+ee)/cc,0,1):0;
@@ -132,13 +181,53 @@ function create(actor,T){
   const capsules=bodyCapsules(),length=actor.weapon.bladeLength*root.scale.x;
   const fit=direction=>{const y=clamp(direction.y,Math.min(low,high),Math.max(low,high));direction.y=0;if(direction.lengthSq()<.001)direction.set(0,0,1);direction.normalize().multiplyScalar(Math.sqrt(1-y*y));direction.y=y;return direction;};
   const collides=direction=>{const base=position.clone().addScaledVector(direction,.15*root.scale.x),tip=position.clone().addScaledVector(direction,length);return capsules.some(c=>segmentDistance(base,tip,c.a,c.b)<c.r+.018*root.scale.x)||(environment.length&&global.AshenNavigation?.segmentCast(base,tip,environment,.018));};
-  const original=fit(axis.clone());if(!collides(original))return original;
+  const original=fit(axis.clone());if(sourcePoseMode||!collides(original))return original;
   root.getWorldQuaternion(equipmentQ);equipmentQ.multiply(actor.pivot.quaternion);const side=actor.anatomyRightSign||-1,away=V(side,0,0).applyQuaternion(equipmentQ);
   const candidates=[.3,.6,1,1.5].map(w=>original.clone().addScaledVector(away,w).normalize());
   for(const p of [[side,0,0],[0,0,-1],[0,0,1],[side,.4,.3],[side,-.4,-.3]])candidates.push(V(...p).applyQuaternion(equipmentQ).normalize());
   let best=original,dot=-Infinity;for(const raw of candidates){const candidate=fit(raw);if(!collides(candidate)){const score=candidate.dot(original);if(score>dot){dot=score;best=candidate;}}}return best;
  }
+ function movePalm(side,point,orientation){
+  const right=side==='right',upper=right?rig.rightUpper:rig.leftUpper,fore=right?rig.rightFore:rig.leftFore,hand=right?rig.rightHand:rig.leftHand,grip=right?actor.weapon?.grip:actor.shield?.grip;
+  if(!upper||!fore||!hand||!grip)return;const wanted=orientation.clone().multiply(grip.orientation.clone().invert()).multiply(grip.bindInverse.clone().invert());fore.getWorldPosition(pole);pole.y+=.025*root.scale.y;
+  for(let i=0;i<3;i++){hand.getWorldPosition(wrist);offset.copy(grip.handOffset||zero);hand.localToWorld(offset);offset.sub(wrist);goal.copy(point).sub(offset);arm(upper,fore,hand,goal,pole);hand.parent.getWorldQuaternion(parentQ);hand.quaternion.copy(parentQ.invert()).multiply(wanted).normalize();hand.updateWorldMatrix(false,true);}actor.updateEquipment();
+ }
+ const shieldSamples=[];
+ if(actor.shield)for(const x of [-.24,-.12,0,.12,.24])for(const y of [-.20,-.08,.05,.18,.30])if((x/.286)**2+((y-.05)/.337)**2<.90)for(const z of [.089,.142])shieldSamples.push(V(x,y,z));
+ function capsulePoint(point,cap){const segment=cap.b.clone().sub(cap.a),u=clamp(point.clone().sub(cap.a).dot(segment)/Math.max(1e-9,segment.lengthSq()),0,1);return cap.a.clone().addScaledVector(segment,u);}
+ function closestSegments(a,b,c,d){
+  const u=b.clone().sub(a),v=d.clone().sub(c),w=a.clone().sub(c),aa=u.dot(u),bb=u.dot(v),cc=v.dot(v),dd=u.dot(w),ee=v.dot(w),den=aa*cc-bb*bb;
+  let s=den>1e-9?clamp((bb*ee-cc*dd)/den,0,1):0,t=cc>1e-9?clamp((bb*s+ee)/cc,0,1):0;if(aa>1e-9)s=clamp((bb*t-dd)/aa,0,1);if(cc>1e-9)t=clamp((bb*s+ee)/cc,0,1);
+  return [a.clone().addScaledVector(u,s),c.clone().addScaledVector(v,t)];
+ }
+ function separateSimple(){
+  const info=actor.equipmentIntegrity||{rightShift:0,leftShift:0,unresolved:null},scale=root.scale.x,floor=root.position.y+.018*scale;root.getWorldQuaternion(rootQ);
+  for(const side of ['left','right']){
+   const item=side==='left'?actor.shield:actor.weapon?.group;if(!item?.visible)continue;
+   for(let pass=0;pass<2;pass++){
+    const caps=bodyCapsules(),centre=item.getWorldPosition(V()),orientation=item.getWorldQuaternion(new T.Quaternion()),push=V();let deepest=0,weight=0;
+    // The deepest collider supplies a continuous depth, not an orientation.
+    // Every penetrating surface contributes to orientation instead of
+    // selecting one capsule's normal when equal-depth contacts exchange rank.
+    const contribute=(depth,normal)=>{if(depth<=0)return;if(normal.lengthSq()<1e-8)normal.set(side==='left'?-(actor.anatomyRightSign||-1):actor.anatomyRightSign||-1,0,0).applyQuaternion(rootQ);const w=depth*depth;push.addScaledVector(normal.normalize(),w);weight+=w;deepest=Math.max(deepest,depth);};
+    if(side==='left'){
+     const middle=item.localToWorld(V(0,.05,.115));for(const local of shieldSamples){const point=item.localToWorld(local.clone());for(const cap of caps){const near=capsulePoint(point,cap),gap=point.distanceTo(near),depth=cap.r+.005*scale-gap;contribute(depth,middle.clone().sub(capsulePoint(middle,cap)));}}
+    }else{
+     const base=item.localToWorld(actor.weapon.base.clone()),tip=item.localToWorld(actor.weapon.tip.clone());for(const cap of caps){const [blade,body]=closestSegments(base,tip,cap.a,cap.b),depth=cap.r+.018*scale-blade.distanceTo(body);contribute(depth,blade.sub(body));}
+    }
+    if(!weight||deepest<.0001*scale)break;
+    if(push.lengthSq()<weight*weight*1e-8)push.set(side==='left'?-(actor.anatomyRightSign||-1):actor.anatomyRightSign||-1,0,0).applyQuaternion(rootQ);push.normalize();
+    if(meshFloor(item)<floor+.04*scale&&push.y<0){push.y=0;if(push.lengthSq()<1e-8)push.set(side==='left'?-(actor.anatomyRightSign||-1):actor.anatomyRightSign||-1,0,0).applyQuaternion(rootQ);push.normalize();}
+    const shift=Math.min(.10*scale,deepest+Math.min(.004*scale,deepest*4));movePalm(side,centre.clone().addScaledVector(push,shift),orientation);info[side+'Shift']+=item.getWorldPosition(V()).distanceTo(centre);
+   }
+  }
+  actor.equipmentIntegrity=info;
+ }
  function equipmentFloor({rolling=false}={}){
+  // The offline armed roll already carries both solid items clear of the body
+  // and ground. Keep its arm channels intact; the shared ground pass is enough.
+  if(rolling&&actor.motionFrame?.source==='Armed_Roll'){actor.equipmentIntegrity={rightShift:0,leftShift:0,unresolved:null,source:'offline-armed-roll'};return;}
+  actor.equipmentIntegrity={rightShift:0,leftShift:0,unresolved:null};separateSimple();
   const floor=root.position.y+.018*root.scale.y;
   for(let pass=0;pass<2;pass++){
    const weapon=actor.weapon?.group;if(weapon){
@@ -153,8 +242,9 @@ function create(actor,T){
     shield.getWorldQuaternion(equipmentQ);worldAxis.copy(shieldAxis).applyQuaternion(equipmentQ).normalize();
     // A shield meeting the ground rolls onto its face while the closed palm
     // stays on the handle; it cannot dig a vertical disc through the floor.
-    let lo=Math.max(0,worldAxis.y),hi=1;for(let i=0;i<10;i++){const y=(lo+hi)*.5,support=gripPoint.y+.097*root.scale.y*y-.365*root.scale.y*Math.sqrt(1-y*y)-.018*root.scale.y;if(support<floor+.01)lo=y;else hi=y;}
-    const y=hi;worldAxis.y=0;if(worldAxis.lengthSq()<.001)worldAxis.set(0,0,1);worldAxis.normalize().multiplyScalar(Math.sqrt(1-y*y));worldAxis.y=y;worldHold('left',gripPoint,worldAxis);actor.updateEquipment();
+    const original=worldAxis.clone(),cloud=itemProbes.left.map(p=>p.clone().applyMatrix4(shield.matrixWorld).sub(gripPoint));let best=null;
+    for(const sign of [1,-1]){const end=V(0,sign,0),turn=new T.Quaternion().setFromUnitVectors(original,end);let lo=0,hi=1;const support=t=>{const q=new T.Quaternion().slerp(turn,t);let low=Infinity;for(const p of cloud)low=Math.min(low,p.clone().applyQuaternion(q).y+gripPoint.y);return low;};if(support(1)<floor+.009)continue;for(let i=0;i<11;i++){const at=(lo+hi)*.5;if(support(at)<floor+.009)lo=at;else hi=at;}const rotation=new T.Quaternion().slerp(turn,hi),angle=rotation.angleTo(new T.Quaternion());if(!best||angle<best.angle)best={angle,direction:original.clone().applyQuaternion(rotation)};}
+    if(best)worldAxis.copy(best.direction);worldHold('left',gripPoint,worldAxis);actor.updateEquipment();
     const after=meshFloor(shield);if(after<floor){shield.getWorldPosition(gripPoint);gripPoint.y+=floor-after+.015;worldHold('left',gripPoint,worldAxis);actor.updateEquipment();}
    }
   }
@@ -183,7 +273,18 @@ function create(actor,T){
   }
   if(altered)p.needsUpdate=true;
  }
- return {hold,readyRight,carries,tuck,ground,equipmentFloor,finalGround,cloth};
+ const contactPoints=[],flaskProbes=probes(actor.flask);
+ function contacts(){
+  // Reuse vectors: the final envelope is not a second render mesh or collider.
+  let count=0;const append=p=>{if(!contactPoints[count])contactPoints[count]=V();contactPoints[count++].copy(p);};
+  for(const p of actor.skinContactPoints?.()||[])append(p);
+  for(const [object,samples]of [[actor.weapon?.group,itemProbes.right],[actor.shield,itemProbes.left],[actor.flask,flaskProbes]]){
+   if(!object||!object.visible)continue;object.updateWorldMatrix(true,true);for(const sample of samples){surfacePoint.copy(sample);object.localToWorld(surfacePoint);append(surfacePoint);}
+  }
+  if(actor.cape){const p=actor.cape.geometry.attributes.position;actor.cape.updateWorldMatrix(true,false);for(let i=0;i<p.count;i++){surfacePoint.fromBufferAttribute(p,i);actor.cape.localToWorld(surfacePoint);append(surfacePoint);}}
+  contactPoints.length=count;actor.contactPoints=contactPoints;
+ }
+ return {hold,readyRight,carries,ground,plantFeet,braceFeet,equipmentFloor,finalGround,cloth,contacts};
 }
 global.AshenRigConstraints={create};
 })(typeof window!=='undefined'?window:globalThis);

@@ -25,16 +25,16 @@ function bossChoice(enemy,player,options={}){
  const phase=enemy.phase>=2?2:1,cycle=Math.max(0,Math.floor(finite(enemy.cycle))),d=distance(enemy,player);
  let type,reason;
  // React only after the bottle is visibly raised. This is a readable long
- // thrust, with the normal windup, never a teleport or an instant input punish.
- if(player.state==='heal'&&finite(player.t)>=.32&&d>2.3&&d<4.1){type='thrust';reason='heal-response';}
+ // backhand, with the normal windup, never a teleport or an instant input punish.
+ if(player.state==='heal'&&finite(player.t)>=.32&&d>2.3&&d<4.1){type='backhand';reason='heal-response';}
  else if(options.guarding&&finite(options.guardTime)>=.60&&d<2.8){type='slam';reason='held-guard';}
- else if(d>3.0){type='thrust';reason='spacing';}
- else{type=(phase===2?['sweep','slam','combo','thrust','combo','slam']:['sweep','slam','thrust','sweep','thrust','slam'])[cycle%6];reason='pattern';}
+ else if(d>3.0){type='backhand';reason='spacing';}
+ else{type=(phase===2?['sweep','slam','combo','backhand','combo','slam']:['sweep','slam','backhand','sweep','backhand','slam'])[cycle%6];reason='pattern';}
  // Avoid repeating the same neutral move after a spacing response. Explicit
  // guard/heal responses remain consistent so the player can learn the rule.
  if(reason==='pattern'&&type===enemy.lastMoveType)type=type==='sweep'?'slam':'sweep';
- const indices=phase===2?{sweep:0,slam:1,combo:2,thrust:3}:{sweep:0,slam:1,thrust:2};
- return {moveType:type,moveIndex:indices[type],reason,attackDistance:type==='thrust'?3.30:2.48};
+ const indices=phase===2?{sweep:0,slam:1,combo:2,backhand:3}:{sweep:0,slam:1,backhand:2};
+ return {moveType:type,moveIndex:indices[type],reason,attackDistance:type==='backhand'?3.30:2.48};
 }
 
 function decide(enemy,player,peers=[],options={}){

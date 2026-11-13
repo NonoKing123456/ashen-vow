@@ -10,7 +10,7 @@ const difference=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
 function curveAt(profile,side,phase){
  const curve=profile.feet[side],at=wrap(phase)*curve.length,i=Math.floor(at),u=at-i;
  const a=curve[i],b=curve[(i+1)%curve.length];
- return {height:lerp(a.height,b.height,u),z:lerp(a.z,b.z,u),contact:lerp(a.contact,b.contact,u)};
+ return {height:lerp(a.height,b.height,u),x:lerp(a.x,b.x,u),z:lerp(a.z,b.z,u),contact:lerp(a.contact,b.contact,u),velocityX:lerp(a.velocityX,b.velocityX,u),velocityZ:lerp(a.velocityZ,b.velocityZ,u),support:lerp(a.support,b.support,u)};
 }
 function cloneRig(source,T){
  const result=source.clone(true),lookup=new Map();
@@ -48,7 +48,7 @@ function calibrate(actor,T){
    for(const side of ['left','right']){
     let minimum=Infinity;for(const p of probes){if(p.side!==side)continue;for(const index of p.indices){p.mesh.boneTransform(index,point);point.applyMatrix4(p.mesh.matrixWorld);minimum=Math.min(minimum,point.y);}}
     const foot=feet[side];if(foot)foot.getWorldPosition(point);else point.set(0,0,0);
-    profile.feet[side].push({height:Number.isFinite(minimum)?minimum:point.y,z:point.z,contact:0});
+    profile.feet[side].push({height:Number.isFinite(minimum)?minimum:point.y,x:point.x,z:point.z,contact:0});
    }
   }
   for(const side of ['left','right']){
@@ -59,6 +59,19 @@ function calibrate(actor,T){
    // the ankle alone: running toe contact can leave the ankle well above ground.
    const inner=Math.max(.008,(high-low)*.06),outer=Math.max(.03,(high-low)*.20);
    for(const v of values)v.contact=1-smooth((v.height-low-inner)/(outer-inner));
+   // A low sole alone does not establish support: the walking source also
+   // passes close to the ground on its forward swing. Retain only intervals
+   // whose measured ankle velocity approximately cancels source root motion.
+   // These are conservative candidates for a bounded leg constraint, never a
+   // claim that the original clip contains a perfectly stationary contact.
+   const native=profile.distance/profile.duration;
+   for(let i=0;i<values.length;i++){
+    const before=values[(i+values.length-1)%values.length],after=values[(i+1)%values.length],v=values[i];
+    v.velocityX=(after.x-before.x)*samples/(2*profile.duration);
+    v.velocityZ=(after.z-before.z)*samples/(2*profile.duration);
+    const residual=Math.hypot(v.velocityX,v.velocityZ+native)/Math.max(.1,native);
+    v.support=v.contact*(1-smooth((residual-.10)/.28));
+   }
   }
   let dominant=1,power=-Infinity;
   for(let frequency=1;frequency<=6;frequency++){
@@ -86,11 +99,15 @@ function calibrate(actor,T){
 }
 function create(actor,T){
  const data=calibrate(actor,T),local=new T.Vector3(),q=new T.Quaternion();
- let phase=0,runWeight=0,directionYaw=0,clock=0,wasMoving=false,previous={left:0,right:0},lastStep={left:-10,right:-10},lastFootfall=-10,lastSide=null;
+ let phase=0,runWeight=0,directionYaw=0,clock=0,wasMoving=false,reverse=false,previousTravelYaw=null,directionAge=0,previous={left:0,right:0},lastStep={left:-10,right:-10},lastFootfall=-10,lastSide=null;
  function update(o={}){
   const dt=clamp(o.dt,0,.05),speed=Math.max(0,Number(o.speed)||0),scale=Math.max(.1,actor.root.scale.x||1),moving=o.enabled!==false&&speed>.07;
   clock+=dt;local.set(Number(o.moveX)||0,0,Number(o.moveZ)||0);actor.root.getWorldQuaternion(q);local.applyQuaternion(q.invert());
-  const hasDirection=local.lengthSq()>.001,reverse=hasDirection&&local.z<-.12&&Math.abs(local.z)>Math.abs(local.x)*.65;
+  const hasDirection=local.lengthSq()>.001,oldReverse=reverse;
+  if(moving&&hasDirection)reverse=local.z<-.12&&-local.z>Math.abs(local.x)*(reverse?.50:.80);
+  const travelYaw=moving&&hasDirection?Math.atan2(local.x,local.z):null;
+  const changed=oldReverse!==reverse||(travelYaw!==null&&previousTravelYaw!==null&&Math.abs(difference(travelYaw,previousTravelYaw))>.30);
+  directionAge=moving&&!changed?directionAge+dt:0;if(travelYaw!==null)previousTravelYaw=travelYaw;
   const wantedYaw=moving&&hasDirection?Math.atan2(local.x*(reverse?-1:1),Math.abs(local.z)):0;
   directionYaw+=difference(wantedYaw,directionYaw)*(1-Math.exp(-12*dt));
   const walkNative=data.walk.distance/data.walk.duration*scale,runNative=data.run.distance/data.run.duration*scale;
@@ -98,20 +115,28 @@ function create(actor,T){
   runWeight+=(target-runWeight)*(1-Math.exp(-10*dt));
   const distance=lerp(data.walk.distance,data.run.distance,runWeight)*scale;
   if(moving)phase=wrap(phase+(reverse?-1:1)*speed*dt/Math.max(.25,distance));
-  const runPhase=wrap(phase+data.runOffset),contacts={},footfalls=[];
+  const runPhase=wrap(phase+data.runOffset),contacts={},feet={},footfalls=[];
   const cycles=lerp(data.walk.cycles,data.run.cycles,runWeight),stepInterval=distance/Math.max(.1,speed*cycles*2),minimumGap=Math.min(.24,stepInterval*.45);
   for(const side of ['left','right']){
    const walk=curveAt(data.walk,side,phase),run=curveAt(data.run,side,runPhase);
    contacts[side]=moving?lerp(walk.contact,run.contact,runWeight):0;
+   const support=moving?lerp(walk.support,run.support,runWeight):0,rate=moving?(reverse?-1:1)*speed/distance*scale:0;
+   // Positions and velocities use character-facing axes but world-meter units
+   // (including root scale), before any directional leg-plane constraint.
+   const sourceVelocity=moving?{x:lerp(walk.velocityX*data.walk.duration,run.velocityX*data.run.duration,runWeight)*rate,z:lerp(walk.velocityZ*data.walk.duration,run.velocityZ*data.run.duration,runWeight)*rate}:{x:0,z:0};
+   const residual=Math.hypot(sourceVelocity.x,sourceVelocity.z+(reverse?-speed:speed)),tolerance=Math.min(.35*scale,.12*scale+speed*.075);
+   feet[side]={contact:contacts[side],support,lockedCandidate:moving&&directionAge>=.10&&contacts[side]>.75&&support>.65&&residual<=tolerance,
+    sourcePosition:{x:lerp(walk.x,run.x,runWeight)*scale,z:lerp(walk.z,run.z,runWeight)*scale},
+    sourceVelocity};
    if(moving&&wasMoving&&contacts[side]>.58&&previous[side]<=.58&&clock-lastStep[side]>.16&&clock-lastFootfall>minimumGap&&(lastSide!==side||clock-lastFootfall>stepInterval*1.8)){
     lastStep[side]=lastFootfall=clock;lastSide=side;footfalls.push({side,strength:lerp(.58,1,runWeight),phase});
    }
    previous[side]=contacts[side];
   }
   wasMoving=moving;
-  return {active:moving,phase,walkPhase:phase,runPhase,walkTime:phase*data.walk.duration,runTime:runPhase*data.run.duration,walkWeight:1-runWeight,runWeight,directionYaw,reverse,contacts,footfalls,walkNative,runNative,strideDistance:distance};
+  return {active:moving,phase,walkPhase:phase,runPhase,walkTime:phase*data.walk.duration,runTime:runPhase*data.run.duration,walkWeight:1-runWeight,runWeight,directionYaw,reverse,contacts,feet,footfalls,walkNative,runNative,strideDistance:distance};
  }
- return {update,calibration:data,reset(){wasMoving=false;previous={left:0,right:0};lastStep={left:-10,right:-10};lastFootfall=-10;lastSide=null;}};
+ return {update,calibration:data,reset(){wasMoving=false;reverse=false;previousTravelYaw=null;directionAge=0;previous={left:0,right:0};lastStep={left:-10,right:-10};lastFootfall=-10;lastSide=null;}};
 }
 global.AshenLocomotion={create,calibrate};
 if(typeof module!=='undefined'&&module.exports)module.exports=global.AshenLocomotion;

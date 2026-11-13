@@ -9,14 +9,21 @@ T.GLTFLoader.prototype.load=function(url,onLoad,onProgress,onError){const b=fs.r
 let actor,enemy,scene;
 test.before(async()=>{await AshenCharacters.load({THREE:T,url:'assets/knight-v11.glb'});scene=new T.Scene();actor=AshenCharacters.createKnight({THREE:T,scene});enemy=AshenCharacters.createKnight({THREE:T,scene,isBoss:true});});
 test('optimized production GLB retains its weighted mesh and authored source clips',()=>{
- const meta=AshenCharacters.getMetadata();assert.equal(Math.round(meta.triangles),59281);assert.equal(meta.bones.length,22);assert.equal(meta.animations.length,9);
+ const meta=AshenCharacters.getMetadata();assert.equal(Math.round(meta.triangles),59281);assert.equal(meta.bones.length,22);assert.equal(meta.originalAnimations.length,9);assert.ok(meta.animations.some(c=>c.name==='Sword_Regular_A_Rec'));
  assert.ok(meta.meshes.some(m=>m.skinned));assert.ok(fs.statSync(path.join(__dirname,'assets/knight-v11.glb')).size<3500000);
+});
+test('production motion metadata survives r128 loading and the roll trajectory is independent of sampling rate',()=>{
+ const roll=C.getMove('roll'),clip=actor.motionClips.find(c=>c.name==='Armed_Roll');
+ assert.ok(clip?.userData?.root_motion?.samples.length>60,'a missing extras payload would leave gameplay sliding independently of the pose');
+ assert.ok(Math.abs(clip.duration-roll.total)<.001,'the controller must preserve the complete roll instead of compressing it to the old dodge');
+ const initial=actor.root.position.clone();
+ for(const hz of [20,30,60,120]){let x=0,z=0;for(let at=0;at<roll.total;){const end=Math.min(roll.total,at+1/hz),delta=actor.actionRootDelta(roll,at,end);assert.ok(Number.isFinite(delta.x)&&Number.isFinite(delta.z));x+=delta.x;z+=delta.z;at=end;}assert.ok(Math.abs(x)<.001&&Math.abs(z-roll.lunge)<.001,'scaled authored root travel drifted at '+hz+'Hz');}
+ assert.ok(actor.root.position.equals(initial),'sampling a trajectory must not mutate the gameplay root');
 });
 function contact(knight,move,distance,height=1.9,combat=false){
  let previous=null,hit=false;knight.root.position.set(0,0,0);
  for(let t=0;t<=move.total;t+=1/120){
-  const start=move.windup*(knight.isBoss?.65:.45),duration=move.activeEnd-start;
-  if(t>start&&t<move.activeEnd){const speed=move.lunge/duration*Math.sin((t-start)/duration*Math.PI);knight.root.position.z=Math.min(distance-(knight.isBoss?1.18:.98),knight.root.position.z+speed/120);}
+  const delta=knight.actionRootDelta(move,Math.max(0,t-1/120),t);knight.root.position.x+=delta.x;knight.root.position.z=Math.min(distance-(knight.isBoss?1.18:.98),knight.root.position.z+delta.z);
   knight.animate({state:'attack',attack:move,time:t,dt:1/120,t,speed:0,comboIndex:move.index,combat});
   const base=knight.weapon.group.localToWorld(knight.weapon.base.clone()),tip=knight.weapon.group.localToWorld(knight.weapon.tip.clone());
   if(previous&&C.samplePose(move,t).active&&C.sweptBladeHit(previous.base,previous.tip,base,tip,{x:0,z:distance,y:0,minY:.32,maxY:height},.4))hit=true;

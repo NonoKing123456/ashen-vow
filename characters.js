@@ -24,23 +24,27 @@ function closeGauntlets(scene,T){
   position.needsUpdate=true;geometry.computeVertexNormals();geometry.computeBoundingBox();geometry.computeBoundingSphere();mesh.userData.closedGauntlets={...stats};
  });return stats;
 }
-function load({THREE:T,url,onProgress,forward=0,gripEuler=null,forceEquipment=false}){
-  if(template&&template.url===url)return Promise.resolve(template.info);
+function load({THREE:T,url,motionUrl='assets/knight-motion-v15.glb',onProgress,forward=0,gripEuler=null,forceEquipment=false}){
+  if(template&&template.url===url&&template.motionUrl===motionUrl)return Promise.resolve(template.info);
   if(pending)return pending;
   pending=new Promise((resolve,reject)=>{
     if(!T.GLTFLoader){reject(new Error('GLTFLoader must be loaded before characters.js'));return;}
-    new T.GLTFLoader().load(url,gltf=>{
+    new T.GLTFLoader().load(url,async gltf=>{try{
+      const motion=motionUrl?await new Promise((yes,no)=>new T.GLTFLoader().load(motionUrl,yes,undefined,no)):null;
       gltf.scene.updateMatrixWorld(true);const gauntlets=closeGauntlets(gltf.scene,T),bounds=new T.Box3().setFromObject(gltf.scene),size=bounds.getSize(new T.Vector3()),bones=[],meshes=[];
       gltf.scene.traverse(o=>{if(o.isBone)bones.push(o.name);if(o.isMesh)meshes.push({name:o.name,skinned:!!o.isSkinnedMesh,triangles:(o.geometry.index?o.geometry.index.count:o.geometry.attributes.position.count)/3,materials:(Array.isArray(o.material)?o.material:[o.material]).map(m=>m.name)});});
-      const clips=gltf.animations.map(c=>c.clone()),gait={};
+      // r128 GLTFLoader does not copy animation.extras to AnimationClip. Read
+      // the source JSON explicitly so controller motion keeps its real timing.
+      const copyClip=(c,extra)=>{const clone=c.clone();clone.userData=extra||c.userData||{};return clone;},originalClips=gltf.animations.map(c=>copyClip(c)),motionClips=(motion?.animations||[]).map((c,i)=>copyClip(c,motion.parser.json.animations[i]?.extras)),clips=[...originalClips,...motionClips],gait={};
       // The original root-motion variants provide actual travelled meters per
       // clip. Retain that cadence before removing root displacement.
       for(const clip of clips){const match=/^(walk|run)_root$/i.exec(clip.name);if(!match)continue;const track=clip.tracks.find(t=>/(?:hips|pelvis|root).*\.position$/i.test(t.name)&&t.getValueSize()===3);if(track){const last=track.values.length-3,distance=Math.hypot(track.values[last]-track.values[0],track.values[last+2]-track.values[2]);if(distance>.05)gait[match[1].toLowerCase()]={distance,duration:clip.duration};}}
       // Keep vertical hip weight shifts but remove translation that would fight
       // collision-aware root movement in the gameplay controller.
-      for(const clip of clips)for(const track of clip.tracks){if(/(?:hips|pelvis|root|armature).*\.position$/i.test(track.name)&&track.getValueSize()===3){const x=track.values[0],z=track.values[2];for(let i=0;i<track.values.length;i+=3){track.values[i]=x;track.values[i+2]=z;}}}
-      const info={url,bounds:{height:size.y,width:size.x,depth:size.z},bones,meshes,gauntlets,animations:clips.map(c=>({name:c.name,duration:c.duration,tracks:c.tracks.length})),triangles:meshes.reduce((n,m)=>n+m.triangles,0)};
-      template={url,gltf,clips,gait,info,forward,gripEuler,forceEquipment};pending=null;resolve(info);
+      for(const clip of originalClips)for(const track of clip.tracks){if(/(?:hips|pelvis|root|armature).*\.position$/i.test(track.name)&&track.getValueSize()===3){const x=track.values[0],z=track.values[2];for(let i=0;i<track.values.length;i+=3){track.values[i]=x;track.values[i+2]=z;}}}
+      const info={url,motionUrl,bounds:{height:size.y,width:size.x,depth:size.z},bones,meshes,gauntlets,originalAnimations:originalClips.map(c=>c.name),animations:clips.map(c=>({name:c.name,duration:c.duration,tracks:c.tracks.length})),triangles:meshes.reduce((n,m)=>n+m.triangles,0)};
+      template={url,motionUrl,gltf,clips,motionClips,gait,info,forward,gripEuler,forceEquipment};pending=null;resolve(info);
+    }catch(error){pending=null;reject(error);}
     },onProgress,e=>{pending=null;reject(new Error('Unable to load the skinned character asset: '+(e.message||url)));});
   });return pending;
 }
@@ -79,9 +83,10 @@ function createKnight({THREE:T,scene,M={},isBoss=false,variant=''}){
   if(includedSword&&replaceSword)includedSword.visible=false;
   const palmOffset=new T.Vector3(.032,.090,-.015);
   // A fist wraps around a handle crossing the knuckles, not along the fingers.
-  // Hand +Y is distal, +X is the palm-inward normal and Z crosses the knuckles.
+  // Hand +Y is distal and +X is palm-inward. The actual mesh puts the thumb
+  // and index on -Z, and the little finger on +Z: the guard belongs at -Z.
   const handRootQ=(hand)=>hand.getWorldQuaternion(new T.Quaternion()).premultiply(root.getWorldQuaternion(new T.Quaternion()).invert()).normalize();
-  const swordOrientation=handRootQ(rig.rightHand||rig.rightFore).multiply(new T.Quaternion().setFromUnitVectors(new T.Vector3(0,-1,0),new T.Vector3(0,0,1)));
+  const swordOrientation=handRootQ(rig.rightHand||rig.rightFore).multiply(new T.Quaternion().setFromUnitVectors(new T.Vector3(0,-1,0),new T.Vector3(0,0,-1)));
   if(template.gripEuler)swordOrientation.multiply(new T.Quaternion().setFromEuler(new T.Euler(...template.gripEuler)));
   const swordSlot=slot(rig.rightHand||rig.rightFore,'right_hand_socket',swordOrientation,palmOffset),bladeLen=boss?1.36:sentinel?1.03:1.08;
   let steelMesh;
@@ -170,7 +175,7 @@ function createKnight({THREE:T,scene,M={},isBoss=false,variant=''}){
   const clothTex=new T.DataTexture(clothData,clothSize,clothSize,T.RGBAFormat);clothTex.encoding=T.sRGBEncoding;clothTex.magFilter=T.LinearFilter;clothTex.minFilter=T.LinearMipmapLinearFilter;clothTex.generateMipmaps=true;clothTex.needsUpdate=true;clothMat.map=clothTex;
   const weaveTex=new T.DataTexture(reliefData,clothSize,clothSize,T.RGBAFormat);weaveTex.wrapS=weaveTex.wrapT=T.RepeatWrapping;weaveTex.repeat.set(3,5);weaveTex.magFilter=T.LinearFilter;weaveTex.minFilter=T.LinearMipmapLinearFilter;weaveTex.generateMipmaps=true;weaveTex.needsUpdate=true;clothMat.bumpMap=weaveTex;clothMat.bumpScale=.0018;
   const gait={};for(const [key,value]of Object.entries(template.gait))gait[key]={...value,distance:value.distance*normalization};
-  const mixer=new T.AnimationMixer(visual),actor={root,pivot,model,visual,body,neck,head,arms,legs,weapon,shield,cape,flask,flaskMaterial,rig,mixer,clips:template.clips,gait,materials:actorMaterials,isBoss:boss,variant,scale:root.scale.x,walk:0,blend:0,hit:0,_clothFrame:0,source:template.url};
+  const mixer=new T.AnimationMixer(visual),actor={root,pivot,model,visual,body,neck,head,arms,legs,weapon,shield,cape,flask,flaskMaterial,rig,mixer,clips:template.clips,motionClips:template.motionClips,gait,materials:actorMaterials,isBoss:boss,variant,scale:root.scale.x,walk:0,blend:0,hit:0,_clothFrame:0,source:template.url};
   // Sockets are children of the animated pivot. Inverting the gameplay root
   // would apply a somersault twice to equipment while its hand only rolls once.
   actor.updateEquipment=()=>{root.updateWorldMatrix(true,true);art.getWorldQuaternion(rootInv).invert();for(const b of bindings){v.copy(b.offset);b.target.localToWorld(v);art.worldToLocal(v);b.slot.position.copy(v);b.target.getWorldQuaternion(q);b.slot.quaternion.copy(rootInv).multiply(q).multiply(b.bindInverse).multiply(b.orientation).normalize();}art.updateWorldMatrix(false,true);if(includedSword&&!replaceSword){includedSword.geometry.computeBoundingBox();const bb=includedSword.geometry.boundingBox;const axis=['x','y','z'].sort((a,b)=>(bb.max[b]-bb.min[b])-(bb.max[a]-bb.min[a]))[0];const localTip=bb.getCenter(new T.Vector3());localTip[axis]=Math.abs(bb.max[axis])>Math.abs(bb.min[axis])?bb.max[axis]:bb.min[axis];includedSword.localToWorld(localTip);swordSlot.worldToLocal(localTip);weapon.tip.copy(localTip);}};
@@ -186,7 +191,9 @@ function createKnight({THREE:T,scene,M={},isBoss=false,variant=''}){
     const indices=new Set();for(const bins of extremes.values())for(const bin of bins)indices.add(bin.index);skinProbes.push({mesh:o,indices:[...indices]});
     for(const side of ['left','right']){const name=side==='left'?/^(foot|toe)l$/:/^(foot|toe)r$/,footIndices=new Set();for(const [index,bins]of extremes)if(name.test(norm(o.skeleton.bones[index]?.name||'')))for(const bin of bins)footIndices.add(bin.index);if(footIndices.size)footProbes[side].push({mesh:o,indices:[...footIndices]});}
   });
-  actor.groundBounds=()=>{root.updateWorldMatrix(true,true);let min=Infinity,max=-Infinity;for(const probe of skinProbes){probe.mesh.updateMatrixWorld(true);probe.mesh.skeleton.update();for(const index of probe.indices){probe.mesh.boneTransform(index,probePoint);probePoint.applyMatrix4(probe.mesh.matrixWorld);min=Math.min(min,probePoint.y);max=Math.max(max,probePoint.y);}}return {min,max};};
+  const skinContactPoints=[];
+  actor.skinContactPoints=()=>{root.updateWorldMatrix(true,true);let count=0;for(const probe of skinProbes){probe.mesh.updateMatrixWorld(true);probe.mesh.skeleton.update();for(const index of probe.indices){if(!skinContactPoints[count])skinContactPoints[count]=new T.Vector3();probe.mesh.boneTransform(index,skinContactPoints[count]);skinContactPoints[count++].applyMatrix4(probe.mesh.matrixWorld);}}skinContactPoints.length=count;return skinContactPoints;};
+  actor.groundBounds=()=>{let min=Infinity,max=-Infinity;for(const point of actor.skinContactPoints()){min=Math.min(min,point.y);max=Math.max(max,point.y);}return {min,max};};
   actor.footBounds=()=>{root.updateWorldMatrix(true,true);const result={};for(const side of ['left','right']){let min=Infinity,max=-Infinity;for(const probe of footProbes[side]){probe.mesh.updateMatrixWorld(true);probe.mesh.skeleton.update();for(const index of probe.indices){probe.mesh.boneTransform(index,probePoint);probePoint.applyMatrix4(probe.mesh.matrixWorld);min=Math.min(min,probePoint.y);max=Math.max(max,probePoint.y);}}result[side]={min,max};}return result;};
   actor.probeStats={body:skinProbes.reduce((n,p)=>n+p.indices.length,0),leftFoot:footProbes.left.reduce((n,p)=>n+p.indices.length,0),rightFoot:footProbes.right.reduce((n,p)=>n+p.indices.length,0)};
   if(rig.rightUpper&&rig.spine){rig.rightUpper.getWorldPosition(v);actor.anatomyRightSign=Math.sign(v.x-root.position.x)||-1;}

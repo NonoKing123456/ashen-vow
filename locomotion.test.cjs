@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const T=require('./vendor/three.min.js');
 global.THREE=T;global.window=global;global.self=global;
-require('./vendor/GLTFLoader.js');require('./locomotion.js');require('./locomotion.js');require('./rig-constraints.js');require('./motion.js');require('./characters.js');
+require('./vendor/GLTFLoader.js');require('./locomotion.js');require('./rig-constraints.js');require('./motion.js');require('./characters.js');
 T.TextureLoader.prototype.load=function(url,onLoad){const texture=new T.Texture();queueMicrotask(()=>onLoad(texture));return texture;};
 T.GLTFLoader.prototype.load=function(url,onLoad,onProgress,onError){const b=fs.readFileSync(path.join(__dirname,url));this.parse(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'',onLoad,onError);};
 let actor;
@@ -59,4 +59,55 @@ test('starts, stops, reversals and lateral travel preserve phase continuity and 
  const right=walk(driver,1.85,1,{moveX:1.85,moveZ:0});assert.equal(right.reverse,false);assert.ok(Math.abs(right.directionYaw-Math.PI/2)<.01);
  for(let i=0;i<60;i++){const f=driver.update({dt:1/60,speed:1.85,moveZ:-1.85});assert.ok(distance(f.phase,previous.phase)<.04||i===0);previous=f;}
  const paused=driver.update({dt:1/60,speed:4.4,moveZ:4.4,enabled:false});assert.equal(paused.active,false);assert.ok(distance(paused.phase,previous.phase)<1e-8);assert.equal(paused.footfalls.length,0);
+});
+
+test('low forward-swing soles cannot become support merely because their height is near the floor',()=>{
+ const data=AshenLocomotion.create(actor,T).calibration;let rejectedLowSwing=0,acceptedSupport=0;
+ for(const key of ['walk','run'])for(const side of ['left','right']){
+  const profile=data[key],native=profile.distance/profile.duration;
+  for(const sample of profile.feet[side]){
+   const residual=Math.hypot(sample.velocityX,sample.velocityZ+native);
+   assert.ok(Number.isFinite(sample.x)&&Number.isFinite(sample.velocityX)&&Number.isFinite(sample.velocityZ));
+   if(sample.contact>.75&&residual>native*.4){assert.equal(sample.support,0);rejectedLowSwing++;}
+   if(sample.support>.65){assert.ok(sample.contact>.65);assert.ok(residual<native*.25);acceptedSupport++;}
+  }
+ }
+ assert.ok(rejectedLowSwing>10,'production walking source has low but moving soles');
+ assert.ok(acceptedSupport>60,'conservative support must retain real source stance intervals');
+});
+
+test('candidate locks respect measured contact velocity at walk, blended and sprint speeds in both directions',()=>{
+ const before=actor.root.position.clone();
+ for(const speed of [1.05,1.85,4.4])for(const sign of [1,-1]){
+  const driver=AshenLocomotion.create(actor,T),counts={left:0,right:0};
+  for(let i=0;i<600;i++){
+   const f=driver.update({dt:1/60,speed,moveZ:speed*sign});
+   for(const side of ['left','right']){
+    const foot=f.feet[side];assert.ok(foot.support>=0&&foot.support<=1);
+    if(!foot.lockedCandidate)continue;counts[side]++;
+    assert.ok(foot.contact>.75);
+    const residual=Math.hypot(foot.sourceVelocity.x,foot.sourceVelocity.z+speed*sign);
+    assert.ok(residual<=.350001,'planting a rapidly moving source ankle would demand large IK correction');
+   }
+  }
+  // The production sprint's right ankle has only a very short low-slip window;
+  // preserve that limitation rather than treating the entire low-sole phase as fixed.
+  for(const side of ['left','right'])assert.ok(counts[side]>=10,side+' needs observable support in both playback directions');
+  const inactive=driver.update({dt:1/60,speed,moveZ:speed*sign,enabled:false});
+  for(const side of ['left','right']){assert.equal(inactive.feet[side].lockedCandidate,false);assert.equal(inactive.feet[side].sourceVelocity.x,0);assert.equal(inactive.feet[side].sourceVelocity.z,0);}
+ }
+ assert.ok(actor.root.position.equals(before),'calibration and candidate generation cannot move the gameplay root');
+});
+
+test('reverse hysteresis prevents phase-direction chatter near the backward lateral boundary',()=>{
+ const driver=AshenLocomotion.create(actor,T);let previous=walk(driver,1.85,1),changes=0;
+ for(let i=0;i<120;i++){
+  const f=driver.update({dt:1/60,speed:1.85,moveX:1.4,moveZ:-1.4*(i%2?.63:.67)});
+  if(f.reverse!==previous.reverse)changes++;previous=f;
+ }
+ assert.equal(changes,0,'small direction noise must not repeatedly reverse clip playback');
+ const reverse=driver.update({dt:1/60,speed:1.85,moveX:0,moveZ:-1.85});assert.equal(reverse.reverse,true);
+ for(const side of ['left','right'])assert.equal(reverse.feet[side].lockedCandidate,false,'a reversal releases existing support');
+ const right=driver.update({dt:1/60,speed:1.85,moveX:1.85,moveZ:0});
+ assert.equal(right.reverse,false);for(const side of ['left','right'])assert.equal(right.feet[side].lockedCandidate,false,'an abrupt turn cannot inherit an old world foot pin');
 });

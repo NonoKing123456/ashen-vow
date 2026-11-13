@@ -12,15 +12,17 @@ const padMove=new T.Vector2();let wasMouseLocked=false;
 function releaseMouse(){if(document.pointerLockElement===$('game'))document.exitPointerLock?.()}
 function captureMouse(){if(!started||paused||dead||won||director?.active||ui.isModalOpen()||(typeof matchMedia==='function'&&matchMedia('(pointer:coarse)').matches))return;try{const result=$('game').requestPointerLock?.();result?.catch?.(()=>{})}catch(e){}}
 function cameraLook(dx,dy){if(!started||paused||dead||won||ui.isModalOpen()||director?.active||locked)return;const sensitivity=settings.sensitivity||1;camYaw-=clamp(Number(dx)||0,-300,300)*.0038*sensitivity;camPitch=clamp(camPitch+clamp(Number(dy)||0,-300,300)*.0027*sensitivity,.05,.75)}
-let mode='title',started=false,paused=false,ready=false,time=0,playTime=0,frameCount=0,last=0,fps=60,checkpoint=false,gateOpen=false,bossStarted=false,won=false,dead=false,finishTimer=0,chapter=0;
+let mode='title',started=false,paused=false,ready=false,time=0,playTime=0,frameCount=0,last=null,fps=60,checkpoint=false,gateOpen=false,bossStarted=false,won=false,dead=false,finishTimer=0,chapter=0;
+const FIXED_STEP=1/60,MAX_FRAME_TIME=.25;let accumulator=0,clockReset=true;
+function resetFrameClock(){accumulator=0;clockReset=true;}
 let camYaw=0,camPitch=.28,camDistance=5.1,locked=null,hitstop=0,shake=0,shakePhase=0,damageFlash=0,context=null,guarding=false,guardTime=0;
 const keys=new Set(),stick=new T.Vector2(),moveDir=new T.Vector3(),input=C.createInputBuffer(.28),forward=new T.Vector3(),right=new T.Vector3(),up=new T.Vector3(0,1,0);
-const ui=AshenUI.create({onStart:opts=>start(opts.continue),onRestart:retry,onResume:()=>setPause(false),onPause:()=>setPause(true),onTitle:returnTitle,onJournal:openJournal,onRelic:selectRelic,onSettings:s=>{settings=s;sound.setMix?.(s)},onAudio:v=>sound.setEnabled(v),onQuality:q=>{gfx.setQuality(q);if(typeof weather!=='undefined')weather?.setQuality(q)},onHelp:open=>{paused=open||ui.isPaused();clearInput();sound.update(0,{paused});if(open)releaseMouse();else if(started){$('game').focus();captureMouse()}}});
+const ui=AshenUI.create({onStart:opts=>start(opts.continue),onRestart:retry,onResume:()=>setPause(false),onPause:()=>setPause(true),onTitle:returnTitle,onJournal:openJournal,onRelic:selectRelic,onSettings:s=>{settings=s;sound.setMix?.(s)},onAudio:v=>sound.setEnabled(v),onQuality:q=>{gfx.setQuality(q);if(typeof weather!=='undefined')weather?.setQuality(q)},onHelp:open=>{paused=open||ui.isPaused();resetFrameClock();clearInput();sound.update(0,{paused});if(open)releaseMouse();else if(started){$('game').focus();captureMouse()}}});
 settings=ui.getSettings();sound.setEnabled(settings.audio);sound.setMix?.(settings);gfx.setQuality(settings.quality);ui.setLoading(true);
 const controls=typeof AshenControls!=='undefined'?AshenControls.create({onAction:queue,onSprint:v=>gamepadSprint=v,onPause:()=>{if(director?.active){finishCinematic();return}if(ui.isModalOpen())ui.hideHelp();else if(!started&&ready)start(!!loadCheckpoint());else setPause(!paused)},onJournal:openJournal,onGuard:v=>{padGuard=v;syncGuard()},onMove:(x,y)=>padMove.set(x,y),onLook:(dx,dy)=>{if(!locked&&!director?.active){camYaw-=dx*(settings.sensitivity||1);camPitch=clamp(camPitch+dy*(settings.sensitivity||1),.05,.75)}},onDevice:device=>support=device==='gamepad'?'手柄':'键鼠',onMenu:a=>{if(director?.active){if(a==='accept'||a==='back')finishCinematic();return;}ui.menuInput?.(a)},onDisconnected:()=>{padMove.set(0,0);padGuard=false;syncGuard();if(started&&!dead&&!won)setPause(true)}}):null;
 const palette={};for(const [name,color]of Object.entries({stone:'#657071',darkStone:'#28343c',edge:'#a1a498',floor:'#4d565b',soil:'#202c30',gold:'#988052',steel:'#b0b5b8',hero:'#6f7779',boss:'#3a454e',leather:'#24282b',chain:'#454d52',cloth:'#632e30',bossCloth:'#293d48',ember:'#f4ac61',soul:'#9dc8cf',grass:'#555a43',bone:'#b5ad96'})){const m=new T.MeshStandardMaterial({color,metalness:['gold','steel','hero','boss'].includes(name)?.72:.05,roughness:['gold','steel','hero','boss'].includes(name)?.4:.91});m.color.convertSRGBToLinear();palette[name]=m;}
 let surfaces=null;
-try{[surfaces]=await Promise.all([typeof AshenSurfaces!=='undefined'?AshenSurfaces.load(T,renderer):Promise.resolve(null),AshenCharacters.load({THREE:T,url:'assets/knight-v11.glb',onProgress:p=>{if(ui.loadingProgress)ui.loadingProgress(p.total?p.loaded/p.total:0)}})])}catch(error){$('fatal').hidden=false;$('fatal-text').textContent='资源未能载入，请刷新重试。'+(error.message||error);ui.setLoading(false);return;}
+try{[surfaces]=await Promise.all([typeof AshenSurfaces!=='undefined'?AshenSurfaces.load(T,renderer):Promise.resolve(null),AshenCharacters.load({THREE:T,url:'assets/knight-v11.glb',motionUrl:'assets/knight-motion-v15.glb',onProgress:p=>{if(ui.loadingProgress)ui.loadingProgress(p.total?p.loaded/p.total:0)}})])}catch(error){$('fatal').hidden=false;$('fatal-text').textContent='资源未能载入，请刷新重试。'+(error.message||error);ui.setLoading(false);return;}
 const level=AshenLevel.create({THREE:T,scene,renderer,M:palette,surfaces});
 const weather=typeof AshenWeather!=='undefined'?AshenWeather.create({THREE:T,scene,bounds:level.bounds}):null;
 weather?.setQuality(ui.getSettings().quality);
@@ -42,9 +44,9 @@ function save(){
  try{localStorage.setItem('ashen-vow-checkpoint',JSON.stringify(data));ui.setCheckpoint(true)}catch(e){ui.notify('浏览器未能保存进度；本次旅途仍可继续','warn')}
 }
 function loadCheckpoint(){try{return AshenJourney.checkpoint(JSON.parse(localStorage.getItem('ashen-vow-checkpoint')||'null'))}catch(e){return null}}
-function clearInput(){guarding=mouseGuard=padGuard=gamepadSprint=false;guardTime=0;keys.clear();stick.set(0,0);padMove.set(0,0);input.entries.length=0;controls?.reset()}
+function clearInput(){guarding=mouseGuard=padGuard=gamepadSprint=false;guardTime=0;keys.clear();stick.set(0,0);padMove.set(0,0);input.entries.length=0;controls?.reset();if(ready){player.velocity.set(0,0,0);player.visualVelocity?.set(0,0,0);player.speed=0;}}
 function syncGuard(){const next=mouseGuard||padGuard||keys.has('KeyL');if(next&&!guarding)guardTime=0;guarding=next}
-function returnTitle(){director?.clear();ui.setCinematic?.(false);if(started)save();started=false;paused=false;releaseMouse();dead=won=false;finishTimer=0;mode='title';locked=null;clearInput();ui.setStarted(false);sound.update(0,{paused:true});ui.setCheckpoint(!!loadCheckpoint())}
+function returnTitle(){resetFrameClock();director?.clear();ui.setCinematic?.(false);if(started)save();started=false;paused=false;releaseMouse();dead=won=false;finishTimer=0;mode='title';locked=null;clearInput();ui.setStarted(false);sound.update(0,{paused:true});ui.setCheckpoint(!!loadCheckpoint())}
 function journalSnapshot(){return {...journey.snapshot(),player:{x:player.x,z:player.z,yaw:player.yaw},discoveries:level.discoveries||[],entries:AshenJourney.entries,objective:objectiveText(),stage:bossDefeated?'钟声将至':bossStarted?'无冠者之厅':gateOpen?'钟门已开':checkpoint?'余火小堂':'失誓者之径'}}
 function openJournal(){if(!started||dead||won||director?.active)return;if(ui.isModalOpen()){ui.hideHelp();return}ui.showJournal?.(journalSnapshot())}
 function selectRelic(id){
@@ -53,6 +55,7 @@ function selectRelic(id){
 }
 function start(resume){if(!ready)return;if(!resume){try{localStorage.removeItem('ashen-vow-checkpoint')}catch(e){}ui.setCheckpoint(false)}started=true;ui.setStarted(true);sound.unlock();resetRun(resume?loadCheckpoint():null);if(resume||!beginCinematic('arrival',player))ui.chapter(resume?'余火小堂':'失誓者之径',resume?'火尚未熄，誓言仍在':'THE LAST BELL');$('game').focus();captureMouse()}
 function resetRun(data){
+ resetFrameClock();
  director?.clear();ui.setCinematic?.(false);seenRegions.clear();regionAge=0;impactPulse=0;
  journey.restore(data?.journey);checkpoint=!!data?.active;gateOpen=!!data?.gate;bossDefeated=!!data?.bossDefeated;bossStarted=false;ending=0;dead=won=false;paused=false;mode='game';playTime=journey.snapshot().time;combatTime=0;finishTimer=0;chapter=0;locked=null;context=null;hitstop=shake=damageFlash=0;clearInput();
  const mods=journey.modifiers();player.max=mods.maxHp;player.maxStamina=mods.maxStamina;
@@ -61,44 +64,49 @@ function resetRun(data){
  }
  Object.assign(player,{stamina:mods.maxStamina,flasks:4,regenDelay:0,combo:0,chainUntil:0,dodgeUntil:0,counterUntil:0,healed:false,guardBroken:false,criticalTarget:null});
  if(checkpoint){player.x=-8.5;player.z=3.6;player.yaw=Math.atan2(8.5,-9.6)}if(bossDefeated)gateOpen=true;
- level.setGate(gateOpen);level.setBossDefeated?.(bossDefeated);for(const d of level.discoveries||[])level.setDiscovery?.(d.id,journey.snapshot().memories.includes(d.id));
+ level.setGate(gateOpen,true);level.setBossDefeated?.(bossDefeated);for(const d of level.discoveries||[])level.setDiscovery?.(d.id,journey.snapshot().memories.includes(d.id));
  syncAll();camYaw=player.yaw+PI;camPitch=.28;cameraClip=camDistance;cameraTarget.set(player.x,1.3,player.z);cameraPos.set(player.x+Math.sin(camYaw)*5,3.4,player.z+Math.cos(camYaw)*5);camera.position.copy(cameraPos);camera.lookAt(cameraTarget);ui.setStarted(true);ui.setPaused(false);ui.updateStep(checkpoint?'小堂可选择一项赐福 · Tab 查看旅途手记':'WASD 行走 · Shift 奔跑 · 移动鼠标观察 · Tab 手记');
 }
 function retry(){const data=loadCheckpoint()||{active:false};data.journey=journey.snapshot();resetRun(data);ui.chapter(checkpoint?'余火未熄':'誓约未尽','RISE AGAIN');$('game').focus();captureMouse()}
 function syncAll(){for(const e of [player,...enemies]){e.actor.root.position.set(e.x,0,e.z);e.actor.root.rotation.y=e.yaw;}}
-function setPause(v){if(!started||dead||won)return;paused=v;clearInput();ui.setPaused(v);sound.update(0,{paused:v});if(v)releaseMouse();else captureMouse()}
+function setPause(v){if(!started||dead||won)return;paused=v;resetFrameClock();clearInput();ui.setPaused(v);sound.update(0,{paused:v});if(v)releaseMouse();else captureMouse()}
 function queue(action){if(director?.active){finishCinematic();return}if(started&&!paused&&!dead&&!won&&!ui.isModalOpen())C.queueInput(input,action,combatTime)}
 function boundsContain(x,z,r=.25){return level.bounds.some(b=>x>=b.x-b.w/2+r&&x<=b.x+b.w/2-r&&z>=b.z-b.d/2+r&&z<=b.z+b.d/2-r)}
 function move(e,dx,dz){return AshenNavigation.move(e,dx,dz,{bounds:level.bounds,obstacles:level.obstacles,entities:[player,...enemies],player});}
+function moveAction(e,dt,rolling=false){const delta=e.actor.actionRootDelta(e.attack,Math.max(0,e.t-dt),e.t),yaw=rolling?Math.atan2(e.roll.x,e.roll.z):e.yaw,s=Math.sin(yaw),c=Math.cos(yaw);return move(e,delta.x*c+delta.z*s,delta.z*c-delta.x*s);}
 function inputDirection(){const x=(keys.has('KeyD')?1:0)-(keys.has('KeyA')?1:0)+stick.x+padMove.x,z=(keys.has('KeyW')?1:0)-(keys.has('KeyS')?1:0)+stick.y+padMove.y;camera.getWorldDirection(forward);forward.y=0;forward.normalize();right.crossVectors(forward,up);moveDir.copy(forward).multiplyScalar(z).addScaledVector(right,x);if(moveDir.length()>1)moveDir.normalize();return moveDir.length();}
 function nearest(range=20){let best=null,d=range;for(const e of enemies){if(e.hp<=0||!e.actor.root.visible)continue;const nd=dist(player,e);if(nd<d){best=e;d=nd}}return best;}
+function forwardTarget(range=3.1){let target=null,best=Infinity;for(const e of enemies){if(e.hp<=0||!e.actor.root.visible)continue;const d=dist(player,e),angle=Math.abs(C.angleDelta(Math.atan2(e.x-player.x,e.z-player.z),player.yaw));if(d<=range&&angle<=PI/3&&d+angle*.5<best){target=e;best=d+angle*.5;}}return target;}
 function useStamina(amount){if(player.stamina<amount){ui.notify('耐力不足','warn');return false}player.stamina-=amount;player.regenDelay=.65;return true}
 function attackPlayer(kind){
  const dodge=kind==='light'&&combatTime<player.dodgeUntil,combo=kind==='light'&&!dodge&&(player.state==='attack'||combatTime<player.chainUntil)?(player.combo+1)%3:0;
  let p=C.getMove(dodge?'dodgeAttack':kind,combo);if(combatTime<player.counterUntil)p=C.counterProfile(p);
  if(!useStamina(p.stamina))return;player.counterUntil=player.dodgeUntil=0;player.combo=combo;player.chainUntil=0;
- const target=locked||nearest(3.1);if(target)player.yaw=Math.atan2(target.x-player.x,target.z-player.z);else if(moveDir.lengthSq()>.01)player.yaw=Math.atan2(moveDir.x,moveDir.z);
+ const target=locked&&locked.hp>0?locked:forwardTarget();if(target){const aim=Math.atan2(target.x-player.x,target.z-player.z);player.yaw+=locked?C.angleDelta(aim,player.yaw):clamp(C.angleDelta(aim,player.yaw),-PI/8,PI/8);}
  player.criticalTarget=null;change(player,'attack',p)
 }
 function breakPosture(e){e.posture=100;e.postureDelay=3;change(e,'stagger');sound.play('posture');ui.notify('架势击破 · 靠近按 F 处决','parry');effect.shock(e.x,e.z);}
 function criticalStrike(target){if(player.state!=='idle'||target.hp<=0||target.state!=='stagger'||dist(player,target)>1.9)return false;const a=C.getMove('critical');if(!useStamina(a.stamina))return false;player.criticalTarget=target;player.combo=0;player.yaw=Math.atan2(target.x-player.x,target.z-player.z);player.invuln=1.0;target.t=0;change(player,'attack',a);journey.record('executions');sound.play('swing',{heavy:true});return true;}
 function rollPlayer(){const p=C.getMove('roll');if(!useStamina(p.stamina))return;player.roll.copy(moveDir.lengthSq()>.01?moveDir:new T.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw))).normalize();change(player,'roll',p);journey.record('rolls');sound.play('roll');}
-function updatePlayer(dt){const p=player;p.t+=dt;p.invuln=Math.max(0,p.invuln-dt);p.regenDelay=Math.max(0,p.regenDelay-dt);p.hit=Math.max(0,p.hit-dt);const amount=inputDirection(),moving=amount>.1;guardTime=guarding?guardTime+dt:0;
+function updatePlayer(dt){const p=player;p.t+=dt;p.invuln=Math.max(0,p.invuln-dt);p.regenDelay=Math.max(0,p.regenDelay-dt);p.hit=Math.max(0,p.hit-dt);const amount=inputDirection(),moving=amount>.1;guardTime=guarding&&p.state==='idle'?guardTime+dt:0;
+// The same recovery gate used by the source motion must hand control back to
+// the shield. Holding guard during a strike cannot cancel its contact phase.
+if(guarding&&p.state==='attack'&&C.canCancel(p.attack,p.t,'guard')){p.criticalTarget=null;p.chainUntil=0;change(p,'idle');guardTime=0;}
 const action=C.consumeInput(input,combatTime,a=>{if(p.state==='idle')return true;if(p.state==='attack')return a==='light'||a==='heavy'?C.canCancel(p.attack,p.t,a):a==='roll'&&C.canCancel(p.attack,p.t,'roll');return false});
 if(action==='interact')interact();else if(action==='lock'){locked=locked?null:nearest(18);sound.play('ui')}else if(action==='roll')rollPlayer();else if(action==='light'||action==='heavy'){if(!guarding)attackPlayer(action)}else if(action==='heal'){if(p.flasks>0&&p.hp<p.max){p.flasks--;journey.record('heals');change(p,'heal');sound.play('heal');p.regenDelay=1.2;}else ui.notify(p.flasks?'生命已满':'药瓶已空')}
-if(p.state==='roll'){const u=clamp(p.t/p.attack.total,0,1),speed=7.8*(1-u*.72);move(p,p.roll.x*speed*dt,p.roll.z*speed*dt);if(p.t>=p.attack.total){p.dodgeUntil=combatTime+.38;change(p,'idle');p.actor.root.rotation.x=0;}}
-else if(p.state==='attack'){const a=p.attack,pose=C.samplePose(a,p.t);if(p.t>a.windup*.45&&p.t<a.activeEnd){const u=clamp((p.t-a.windup*.45)/(a.activeEnd-a.windup*.45),0,1),speed=a.lunge/(a.activeEnd-a.windup*.45)*Math.sin(u*PI);move(p,Math.sin(p.yaw)*speed*dt,Math.cos(p.yaw)*speed*dt)}if(pose.done){p.criticalTarget=null;p.chainUntil=combatTime+.22;change(p,'idle')}else if(p.t>=a.chainOpen&&p.t<=a.chainClose&&input.entries.some(e=>e.action==='light'&&combatTime-e.time<input.lifetime)){input.entries=input.entries.filter(e=>e.action!=='light');p.chainUntil=combatTime+.3;attackPlayer('light')}}
+if(p.state==='roll'){moveAction(p,dt,true);if(p.t>=p.attack.total){p.dodgeUntil=combatTime+.38;change(p,'idle');}}
+else if(p.state==='attack'){const a=p.attack,pose=C.samplePose(a,p.t);moveAction(p,dt);if(pose.done){p.criticalTarget=null;p.chainUntil=combatTime+.22;change(p,'idle')}else if(p.t>=a.chainOpen&&p.t<=a.chainClose&&input.entries.some(e=>e.action==='light'&&combatTime-e.time<input.lifetime)){input.entries=input.entries.filter(e=>e.action!=='light');p.chainUntil=combatTime+.3;attackPlayer('light')}}
 else if(p.state==='heal'){if(p.t>.72&&!p.healed){p.healed=true;p.hp=Math.min(p.max,p.hp+55);effect.burst(new T.Vector3(p.x,1.1,p.z),'heal',30);ui.notify('余烬温暖了伤口')}if(p.t>1.25){p.healed=false;change(p,'idle')}}
 else if(p.state==='hurt'){if(p.t>(p.guardBroken?.85:.34)){p.guardBroken=false;change(p,'idle')}}
 else if(p.state==='idle'){const sprint=moving&&(keys.has('ShiftLeft')||gamepadSprint)&&p.stamina>3&&!guarding;const speed=moving?(guarding?1.05:sprint?4.4:1.85)*(locked&&!guarding?(.78+.22*Math.max(0,moveDir.x*Math.sin(p.yaw)+moveDir.z*Math.cos(p.yaw))):1):0;p.velocity.x=damp(p.velocity.x,moveDir.x*speed,moving?15:21,dt);p.velocity.z=damp(p.velocity.z,moveDir.z*speed,moving?15:21,dt);const travelled=move(p,p.velocity.x*dt,p.velocity.z*dt);p.speed=dt>0?travelled/dt:0;if(sprint&&p.speed>.2){p.stamina=Math.max(0,p.stamina-12*dt);p.regenDelay=.25}if(locked&&locked.hp>0){p.yaw+=C.angleDelta(Math.atan2(locked.x-p.x,locked.z-p.z),p.yaw)*(1-Math.exp(-17*dt))}else if(moving){p.yaw+=C.angleDelta(Math.atan2(moveDir.x,moveDir.z),p.yaw)*(1-Math.exp(-15*dt))}if(p.regenDelay<=0)p.stamina=Math.min(p.maxStamina||100,p.stamina+(guarding?14:32)*dt)}
 if(p.state!=='idle'){p.velocity.multiplyScalar(Math.exp(-18*dt));p.speed=damp(p.speed,0,17,dt)}if(locked&&locked.hp<=0)locked=null;}
 function updateEnemy(e,dt){e.t+=dt;e.invuln=Math.max(0,e.invuln-dt);e.hit=Math.max(0,e.hit-dt);if(e.hp<=0){e.deathAge+=dt;e.speed=0;if(e.deathAge>5&&e.kind!=='boss')e.actor.root.visible=false;return}const d=dist(player,e),bossType=e.kind==='boss';e.postureDelay=Math.max(0,(e.postureDelay||0)-dt);if(e.state!=='stagger'&&e.postureDelay<=0)e.posture=Math.max(0,e.posture-dt*7);e.cooldown=Math.max(0,e.cooldown-dt);
-if(!e.aggro){const trigger=bossType?player.z<-11:d<7.2;if(trigger&&!dead){e.aggro=true;if(bossType){bossStarted=true;level.setGate(false);if(!beginCinematic('warden',e))ui.chapter('无冠守望者','THE WARDEN OF THE LAST BELL');sound.play('awaken');change(e,'awaken');}else{change(e,'awaken');sound.play('awaken',{distance:d,x:audioPan(e)});if(chapter<1){chapter=1;ui.updateStep('Q 锁定 · J 轻击 · Space 向攻击侧面翻滚')}}}return}
+if(!e.aggro){const trigger=bossType?player.z<-11:d<7.2;if(trigger&&!dead){e.aggro=true;if(bossType){bossStarted=true;level.setGate(false);if(!beginCinematic('warden',e))ui.chapter('无冠守望者','THE WARDEN OF THE LAST BELL');sound.play('awaken');change(e,'awaken');}else{change(e,'awaken');sound.play('awaken',{distance:d,x:audioPan(e)});if(chapter<1){chapter=1;ui.updateStep('Q 锁定 · J 轻击 · Space 向攻击侧面闪避')}}}return}
 if(e.state==='awaken'){if(e.t>(bossType?1.6:.7))change(e,'idle');return}
 if(bossType&&e.phase===1&&e.hp<e.max*.5&&e.state==='idle'){e.phase=2;change(e,'phase');sound.play('phase');effect.shock(e.x,e.z);ui.chapter('第二誓约','不熄之刃');return}
 if(e.state==='phase'){if(e.t>2.1)change(e,'idle');return}if(e.state==='hurt'||e.state==='stagger'){if(e.t>(e.state==='stagger'?2.4:.38)){if(e.state==='stagger')e.posture=0;change(e,'idle');}return}
 const targetYaw=Math.atan2(player.x-e.x,player.z-e.z);
-if(e.state==='attack'){const a=e.attack;if(e.t<a.windup*(a.turnLock||.45))e.yaw+=C.angleDelta(targetYaw,e.yaw)*(1-Math.exp(-6*dt));if(e.t>a.windup*.65&&e.t<a.activeEnd){const u=clamp((e.t-a.windup*.65)/(a.activeEnd-a.windup*.65),0,1),speed=a.lunge/(a.activeEnd-a.windup*.65)*Math.sin(u*PI);move(e,Math.sin(e.yaw)*speed*dt,Math.cos(e.yaw)*speed*dt)}if(e.t>a.total){change(e,'idle');e.cooldown=bossType?.28:.6}e.speed=0;return;}
+if(e.state==='attack'){const a=e.attack;if(e.t<a.windup*(a.turnLock||.45))e.yaw+=C.angleDelta(targetYaw,e.yaw)*(1-Math.exp(-6*dt));moveAction(e,dt);if(e.t>a.total){change(e,'idle');e.cooldown=bossType?.28:.6}e.speed=0;return;}
 const decision=AshenTactics.decide(e,player,enemies,{time,guarding,guardTime});
 if(decision.action==='return'){
  e.returning=true;
@@ -153,8 +161,10 @@ function resolveHits(e){if(e.state==='attack'&&e.actor.blockedWeapon){const c=e.
 function animate(e,dt){
  const close=e===player||e.aggro||dist(player,e)<21||(e.kind==='boss'&&bossStarted);e.actor.root.visible=close&&(e.hp>0||e.deathAge<5||e.kind==='boss');if(!close)return;
  e.actor.root.position.set(e.x,0,e.z);e.actor.root.rotation.y=e.yaw;
- const v=e.visualVelocity||e.velocity,yawRate=dt>.0001?C.angleDelta(e.yaw,e.lastYaw??e.yaw)/dt:0;e.lastYaw=e.yaw;
- e.actor.animate({state:e.state,time:e.t,dt,t:time,speed:e.speed,attack:e.attack,guarding:e===player&&guarding,dead:e.hp<=0,comboIndex:e.combo,phase:e.phase,rollDir:e.roll,moveX:v.x,moveZ:v.z,yawRate,combat:e===player?enemies.some(other=>other.aggro&&other.hp>0&&dist(player,other)<9):e.aggro,staminaRatio:e===player?e.stamina/(e.maxStamina||100):1,obstacles:level.obstacles});
+ const v=e.visualVelocity||e.velocity,visualSpeed=e.state==='idle'&&e.visualVelocity?e.visualVelocity.length():e.speed,yawRate=dt>.0001?C.angleDelta(e.yaw,e.lastYaw??e.yaw)/dt:0;e.lastYaw=e.yaw;
+ e.actor.animate({state:e.state,time:e.t,dt,t:time,speed:visualSpeed,attack:e.attack,guarding:e===player&&guarding,dead:e.hp<=0,comboIndex:e.combo,phase:e.phase,rollDir:e.roll,moveX:v.x,moveZ:v.z,yawRate,combat:e===player?enemies.some(other=>other.aggro&&other.hp>0&&dist(player,other)<9):e.aggro,staminaRatio:e===player?e.stamina/(e.maxStamina||100):1,obstacles:level.obstacles});
+ const fitted=AshenNavigation.fitPose(e,e.actor.contactPoints,{bounds:level.bounds,obstacles:level.obstacles,player});
+ if(Math.abs(fitted.x)+Math.abs(fitted.z)>1e-8){e.actor.root.position.x=e.x;e.actor.root.position.z=e.z;e.actor.root.updateWorldMatrix(true,true);e.actor.updateEquipment?.();}
  if(e===player&&dt>0&&e.state==='idle')for(const step of e.actor.gaitFrame?.footfalls||[]){const foot=(step.side==='left'?e.actor.rig?.leftFoot:e.actor.rig?.rightFoot)?.getWorldPosition(new T.Vector3());sound.play('footstep',{heavy:e.speed>3});if(foot)effect.dust(foot.x,foot.z);}
  if(e.actor.setHit)e.actor.setHit(e.hit);e.actor.setCombatCue?.({state:e.state,time:e.t,attack:e.attack});
 }
@@ -182,10 +192,12 @@ function updateContext(){
  context=null;const exposed=enemies.find(e=>e.hp>0&&e.state==='stagger'&&dist(player,e)<1.9);
  if(exposed&&player.state==='idle'){context={kind:'critical',target:exposed};ui.setContext({text:'处决 · 贯穿誓约',key:support==='手柄'?'Y':'F'});return;}
  if(player.state==='idle'){
-  if(bossDefeated&&level.bell&&Math.hypot(player.x-level.bell.x,player.z-level.bell.z)<level.bell.radius)context=level.bell;
-  if(!context)for(const c of level.checkpoints)if(Math.hypot(player.x-c.x,player.z-c.z)<(c.radius||1.8)){context=c;break;}
-  if(!context&&!gateOpen&&Math.abs(player.x)<2.4&&Math.abs(player.z+6)<2)context={kind:'gate'};
-  if(!context&&!enemies.some(e=>e.aggro&&e.hp>0&&dist(player,e)<7))for(const d of level.discoveries||[])if(Math.hypot(player.x-d.x,player.z-d.z)<(d.radius||1.7)){context=d;break;}
+  const candidates=[],distanceTo=c=>Math.hypot(player.x-c.x,player.z-c.z);
+  if(bossDefeated&&level.bell&&distanceTo(level.bell)<level.bell.radius)candidates.push(level.bell);
+  for(const c of level.checkpoints)if(distanceTo(c)<(c.radius||1.8))candidates.push(c);
+  if(!gateOpen&&Math.abs(player.x)<2.4&&Math.abs(player.z+6)<2)candidates.push({kind:'gate',x:0,z:-6});
+  if(!enemies.some(e=>e.aggro&&e.hp>0&&dist(player,e)<7))for(const d of level.discoveries||[])if(distanceTo(d)<(d.radius||1.7))candidates.push(d);
+  candidates.sort((a,b)=>distanceTo(a)-distanceTo(b));context=candidates[0]||null;
  }
  const label=context?.kind==='bell'?'敲响最后的钟声':context?.kind==='memory'?'聆听残响 · '+context.name:context?.kind==='checkpoint'?(checkpoint?'休息 · 选择赐福':'点燃余火 · 接受赐福'):'推开钟门';
  ui.setContext(context?{text:label,key:support==='手柄'?'Y':'F'}:'');
@@ -219,13 +231,14 @@ function updateCamera(dt){if(director?.active){applySceneCamera(director.sample(
 cameraTarget.lerp(target,1-Math.exp(-13*dt));cameraPos.lerp(desired,1-Math.exp(-8*dt));let cameraGoal=cameraPos.clone();const safeDistance=C.cameraDistance(cameraTarget,cameraGoal,level.obstacles);cameraClip=safeDistance<cameraClip?safeDistance:damp(cameraClip,safeDistance,5,dt);const rayDir=cameraGoal.clone().sub(cameraTarget),len=rayDir.length();if(cameraClip<len)cameraGoal=cameraTarget.clone().addScaledVector(rayDir.normalize(),cameraClip);camera.position.copy(cameraGoal);if(shake>0){shakePhase+=dt*90;if(settings.shake!==false){camera.position.x+=Math.sin(shakePhase*1.3)*shake;camera.position.y+=Math.cos(shakePhase*1.7)*shake*.55;}shake=Math.max(0,shake-dt*.8)}camera.lookAt(cameraTarget);const fov=(player.state==='attack'&&player.attack?.kind==='critical'?46:player.speed>4?55:51)-impactPulse*1.4;camera.fov=damp(camera.fov,fov,5,dt);camera.updateProjectionMatrix();if(locked&&locked.hp>0&&!dead&&!won){const at=new T.Vector3(locked.x,locked.kind==='boss'?2.15:1.6,locked.z).project(camera);ui.setLock({x:(at.x*.5+.5)*innerWidth,y:(-at.y*.5+.5)*innerHeight,visible:at.z<1})}else ui.setLock({visible:false});}
 function updateUI(){
  const guardsLeft=enemies.filter(e=>e.kind==='sentinel'&&e.hp>0).length,close=locked||nearest(4),mods=journey.modifiers(),snapshot=journey.snapshot();
- let telegraph='';if(close?.state==='attack'&&close.t<close.attack?.windup)telegraph=close.attack.type==='slam'?'重砸 · 翻滚避开':close.attack.type==='thrust'?'突刺 · 向侧面闪避':close.attack.type==='combo'?'连斩 · 留意第二剑':'';
- const status=player.guardBroken?'架势崩溃':combatTime<player.counterUntil?'精准格挡 · 下一剑强化':combatTime<player.dodgeUntil?'翻滚反击 · J 突刺':guarding?'举盾 · 耐力恢复减缓':'';
+ let threat=null,arrival=Infinity;for(const enemy of enemies){const a=enemy.attack;if(enemy.hp<=0||enemy.state!=='attack'||!a||enemy.t>=a.windup||dist(player,enemy)>a.reach+1.1)continue;const remaining=a.windup-enemy.t;if(remaining<arrival){arrival=remaining;threat=enemy;}}
+ let telegraph='';if(threat)telegraph=threat.attack.type==='slam'?'重砸 · 向侧面闪避':threat.attack.type==='backhand'?'反手斩 · 翻滚或格挡':threat.attack.type==='combo'?'连斩 · 留意第二剑':'斩击 · 格挡或闪避';
+ const status=player.guardBroken?'架势崩溃':combatTime<player.counterUntil?'精准格挡 · 下一剑强化':combatTime<player.dodgeUntil?'翻滚反击 · J 斩击':guarding?'举盾 · 耐力恢复减缓':'';
  ui.update({hp:player.hp,maxHp:player.max,stamina:player.stamina,maxStamina:player.maxStamina||100,flasks:player.flasks,bossHp:bossStarted?boss.hp:0,bossMax:bossStarted?boss.max:0,bossName:boss.name,bossTitle:boss.phase===2?'SECOND VOW · 不熄之刃':'THE WARDEN OF THE LAST BELL',posture:boss.posture,postureMax:100,enemyHp:close?.hp||0,enemyMax:close?.max||1,enemyPosture:close?.posture||0,enemyName:close&&close.kind!=='boss'?close.name:'',objective:objectiveText(),locked:!!locked,relicName:mods.id?mods.name:'',memories:snapshot.memories.length,status,support:support==='手柄'?'gamepad':'keyboard',telegraph:settings.hints===false?'':telegraph,combat:enemies.some(e=>e.aggro&&e.hp>0&&dist(player,e)<10)});
- Object.assign(document.body.dataset,{ready:String(ready),playerState:player.state,playerX:player.x.toFixed(2),playerZ:player.z.toFixed(2),bossState:boss.state,phase:boss.phase,gate:String(gateOpen),checkpoint:String(checkpoint),guards:String(guardsLeft),paused:String(paused),fps:String(Math.round(fps)),release:'14',resolution:String(gfx.getResolution?.()||1),targetPosture:String(nearest(20)?.posture||0),targetT:String(nearest(20)?.t||0),targetWindup:String(nearest(20)?.attack?.windup||0),targetDistance:nearest(20)?dist(player,nearest(20)).toFixed(2):'-',targetState:nearest(20)?.state||'-',targetHp:nearest(20)?.hp||0,frames:String(frameCount),memories:String(snapshot.memories.length),relic:snapshot.relic||'none',bossDefeated:String(bossDefeated)});
+ Object.assign(document.body.dataset,{ready:String(ready),playerState:player.state,playerX:player.x.toFixed(2),playerZ:player.z.toFixed(2),bossState:boss.state,phase:boss.phase,gate:String(gateOpen),checkpoint:String(checkpoint),guards:String(guardsLeft),paused:String(paused),fps:String(Math.round(fps)),release:'15',resolution:String(gfx.getResolution?.()||1),targetPosture:String(nearest(20)?.posture||0),targetT:String(nearest(20)?.t||0),targetWindup:String(nearest(20)?.attack?.windup||0),targetDistance:nearest(20)?dist(player,nearest(20)).toFixed(2):'-',targetState:nearest(20)?.state||'-',targetHp:nearest(20)?.hp||0,frames:String(frameCount),memories:String(snapshot.memories.length),relic:snapshot.relic||'none',bossDefeated:String(bossDefeated)});
 }
 
-function bindInputs(){addEventListener('keydown',e=>{if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab'].includes(e.code)&&!ui.isModalOpen())e.preventDefault();if(e.code==='Escape'){if(director?.active){finishCinematic();return}if(ui.isModalOpen()){ui.hideHelp();return}setPause(!paused);return}if(!started){if(e.code==='Enter'&&ready)start(!!loadCheckpoint());return}if(director?.active){if(['Enter','Space','KeyJ','KeyF'].includes(e.code)&&!e.repeat)finishCinematic();return}if((e.code==='Tab'||e.code==='KeyM')&&!e.repeat){e.preventDefault();openJournal();return}if(e.code==='KeyR'&&(dead||won)){retry();return}if(paused||dead||won||ui.isModalOpen())return;keys.add(e.code);if(e.code==='KeyL')syncGuard();support='键鼠';if(e.repeat)return;const a={KeyJ:'light',KeyK:'heavy',Space:'roll',KeyE:'heal',KeyF:'interact',KeyQ:'lock'}[e.code];if(a)queue(a)});addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='KeyL')syncGuard()});addEventListener('blur',()=>{if(started&&!dead&&!won)setPause(true)});document.addEventListener('visibilitychange',()=>{if(document.hidden&&started&&!dead&&!won)setPause(true)});
+function bindInputs(){addEventListener('keydown',e=>{if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab'].includes(e.code)&&!ui.isModalOpen())e.preventDefault();if(e.code==='Escape'){if(e.repeat)return;if(director?.active){finishCinematic();return}if(ui.isModalOpen()){ui.hideHelp();return}setPause(!paused);return}if(!started){if(e.code==='Enter'&&ready&&!e.repeat)start(!!loadCheckpoint());return}if(director?.active){if(['Enter','Space','KeyJ','KeyF'].includes(e.code)&&!e.repeat)finishCinematic();return}if((e.code==='Tab'||e.code==='KeyM')&&!e.repeat){e.preventDefault();openJournal();return}if(e.code==='KeyR'&&(dead||won)){retry();return}if(paused||dead||won||ui.isModalOpen())return;keys.add(e.code);if(e.code==='KeyL')syncGuard();support='键鼠';if(e.repeat)return;const a={KeyJ:'light',KeyK:'heavy',Space:'roll',KeyE:'heal',KeyF:'interact',KeyQ:'lock'}[e.code];if(a)queue(a)});addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='KeyL')syncGuard()});addEventListener('blur',()=>{resetFrameClock();if(started&&!dead&&!won)setPause(true)});document.addEventListener('visibilitychange',()=>{resetFrameClock();if(document.hidden&&started&&!dead&&!won)setPause(true)});
 const canvas=$('game');let hoverPoint=null;
 canvas.addEventListener('pointerdown',e=>{canvas.focus();if(paused||!started||dead||won||ui.isModalOpen())return;support='键鼠';if(e.pointerType==='touch')return;if(director?.active){finishCinematic();return}captureMouse();if(e.button===2){mouseGuard=true;syncGuard()}else if(e.button===0)queue('light')});
 canvas.addEventListener('pointermove',e=>{if(e.pointerType==='touch'||document.pointerLockElement===canvas)return;if(hoverPoint)cameraLook(e.clientX-hoverPoint.x,e.clientY-hoverPoint.y);hoverPoint={x:e.clientX,y:e.clientY}});
@@ -241,7 +254,49 @@ function ribbon(e,at){let r=ribbons.get(e);if(!r){const array=new Float32Array(1
 function shock(x,z){const m=new T.MeshBasicMaterial({color:'#c3b18c',transparent:true,opacity:.5,side:T.DoubleSide,depthWrite:false});const mesh=new T.Mesh(new T.RingGeometry(.9,1,64),m);mesh.rotation.x=-PI/2;mesh.position.set(x,.025,z);scene.add(mesh);rings.push({mesh,t:0})}
 return {burst,ribbon,shock,dust:(x,z)=>burst(new T.Vector3(x,.04,z),'dust',4),update(dt){light.intensity=Math.max(0,light.intensity-dt*110);for(let i=0;i<200;i++){const p=particles[i];if(p.life>0){p.life-=dt;p.vel.y-=dt*4;p.at.addScaledVector(p.vel,dt);pos.set(p.at.toArray(),i*3);const f=Math.max(0,p.life/p.max);colors.set([p.color.r*f,p.color.g*f,p.color.b*f],i*3)}else pos[i*3+1]=-100;}geo.attributes.position.needsUpdate=true;geo.attributes.color.needsUpdate=true;for(const r of ribbons.values()){r.age+=dt;r.mesh.visible=r.age<.12&&r.history.length>1;if(!r.mesh.visible){r.history.length=0;continue}for(let i=0;i<10;i++){const a=r.history[Math.min(i,r.history.length-1)];r.array.set(a.base.toArray(),i*6);r.array.set(a.tip.toArray(),i*6+3);r.alpha[i*2]=r.alpha[i*2+1]=(1-i/10)*Math.max(0,1-r.age/.12);}r.g.attributes.position.needsUpdate=true;r.g.attributes.alpha.needsUpdate=true;}for(let i=rings.length-1;i>=0;i--){const r=rings[i];r.t+=dt;r.mesh.scale.setScalar(.2+r.t*6);r.mesh.material.opacity=Math.max(0,.5-r.t*.65);if(r.t>.8){scene.remove(r.mesh);r.mesh.geometry.dispose();r.mesh.material.dispose();rings.splice(i,1)}}}};}
 bindInputs();
-function frame(now){requestAnimationFrame(frame);const realDt=last?Math.max(0,(now-last)/1000):0;last=now;const dt=Math.min(realDt,.033);fps=damp(fps,1/Math.max(realDt,1/120),2,dt);if(document.hidden)return;time+=dt;controls?.update(dt,{enabled:started&&!paused&&!dead&&!won&&!director?.active&&!ui.isModalOpen()});level.setReducedMotion?.(settings.shake===false);weather?.setReducedMotion?.(settings.shake===false);if(ready&&!paused&&!ui.isModalOpen()){hitstop=Math.max(0,hitstop-dt);let directing=!!director?.active;if(directing){director.advance(dt);if(!director.active){finishCinematic();directing=false;}}const sim=hitstop>0||directing?0:dt;if(started&&!dead&&!won&&!directing){combatTime+=sim;playTime+=sim;journey.advance(sim);const previous=[player,...enemies].map(e=>({x:e.x,z:e.z}));updatePlayer(sim);for(const e of enemies)updateEnemy(e,sim);[player,...enemies].forEach((e,i)=>{e.visualVelocity=e.visualVelocity||new T.Vector3();if(sim>0)e.visualVelocity.set((e.x-previous[i].x)/sim,0,(e.z-previous[i].z)/sim);});syncAll();for(const e of [player,...enemies])animate(e,sim);for(const e of [player,...enemies])resolveHits(e);updateContext();updateRegion(sim);if(player.z<11&&chapter===0){chapter=1;ui.updateStep('J / K 攻击 · L 格挡 · Space 翻滚 · E 喝药');}}else{for(const e of [player,...enemies]){if(e.hp<=0){e.t+=dt;e.deathAge+=dt;}animate(e,sim)}}if((dead||won)&&finishTimer>0){finishTimer-=dt;if(finishTimer<=0)ui.result({victory:won,time:journey.snapshot().time,kills:enemies.filter(e=>e.hp<=0).length,stats:journey.snapshot().stats,memories:journey.snapshot().memories.length,relic:journey.modifiers().name})}level.update(dt,time);ending=level.ending||0;weather?.setEnding?.(ending);weather?.update(dt,time,player);effect.update(dt);sparks?.update(dt);sound.update(dt,{combat:enemies.some(e=>e.aggro&&e.hp>0),phase:boss.phase,playerHp:player.hp/player.max,sheltered:player.x<-6&&player.z>-.2&&player.z<6.5,paused:false});}
-updateCamera(dt);updateUI();gfx.render(realDt,time,{damage:settings.shake===false?0:damageFlash,phase:boss.phase,ending,impact:settings.shake===false?0:impactPulse,focus:player.actor.root.position,cinematic:!!director?.active});impactPulse=Math.max(0,impactPulse-dt*3.5);damageFlash=Math.max(0,damageFlash-dt*2);frameCount++;}
+// Gameplay advances at a fixed rate; rendering and device polling remain RAF-driven.
+// Discard suspended time instead of charging a resumed run for time spent in menus.
+function simulationStep(dt){
+ time+=dt;
+ let directing=!!director?.active;
+ if(directing){director.advance(dt);if(!director.active)finishCinematic();}
+ const stopped=Math.min(dt,hitstop);hitstop=Math.max(0,hitstop-stopped);
+ const sim=directing?0:dt-stopped;
+ if(started&&!dead&&!won&&!directing){
+  if(sim>1e-9){
+   combatTime+=sim;playTime+=sim;journey.advance(sim);
+   const previous=[player,...enemies].map(e=>({x:e.x,z:e.z}));
+   updatePlayer(sim);for(const e of enemies)updateEnemy(e,sim);
+   syncAll();for(const e of [player,...enemies])animate(e,sim);
+   [player,...enemies].forEach((e,i)=>{e.visualVelocity=e.visualVelocity||new T.Vector3();e.visualVelocity.set((e.x-previous[i].x)/sim,0,(e.z-previous[i].z)/sim);if(e.state==='idle')e.speed=e.visualVelocity.length();});
+   for(const e of [player,...enemies])resolveHits(e);
+   updateContext();updateRegion(sim);
+   if(player.z<11&&chapter===0){chapter=1;ui.updateStep('J / K 攻击 · L 格挡 · Space 闪避 · E 恢复');}
+  }
+ }else{
+  for(const e of [player,...enemies]){if(e.hp<=0){e.t+=dt;e.deathAge+=dt;}animate(e,dt);}
+ }
+ if((dead||won)&&finishTimer>0){finishTimer-=dt;if(finishTimer<=0)ui.result({victory:won,time:journey.snapshot().time,kills:enemies.filter(e=>e.hp<=0).length,stats:journey.snapshot().stats,memories:journey.snapshot().memories.length,relic:journey.modifiers().name});}
+ level.update(dt,time);ending=level.ending||0;weather?.setEnding?.(ending);weather?.update(dt,time,player);effect.update(dt);sparks?.update(dt);
+ sound.update(dt,{combat:enemies.some(e=>e.aggro&&e.hp>0),phase:boss.phase,playerHp:player.hp/player.max,sheltered:player.x<-6&&player.z>-.2&&player.z<6.5,paused:paused||ui.isModalOpen()});
+}
+function frame(now){
+ requestAnimationFrame(frame);
+ const realDt=last===null?0:Math.max(0,(now-last)/1000);last=now;
+ let elapsed=clockReset?0:realDt;clockReset=false;
+ if(document.hidden){resetFrameClock();if(started&&!dead&&!won&&!paused)setPause(true);return;}
+ const renderDt=Math.min(realDt,.1);fps=damp(fps,1/Math.max(realDt,1/120),2,renderDt);
+ controls?.update(Math.min(elapsed,.1),{enabled:started&&!paused&&!dead&&!won&&!director?.active&&!ui.isModalOpen()});
+ if(clockReset){elapsed=0;clockReset=false;}
+ level.setReducedMotion?.(settings.shake===false);weather?.setReducedMotion?.(settings.shake===false);
+ if(ready&&!paused&&!ui.isModalOpen()){
+  accumulator+=Math.min(elapsed,MAX_FRAME_TIME);let steps=0;
+  while(accumulator+1e-9>=FIXED_STEP&&steps<15&&!paused&&!ui.isModalOpen()){
+   accumulator=Math.max(0,accumulator-FIXED_STEP);steps++;simulationStep(FIXED_STEP);
+  }
+ }else accumulator=0;
+ updateCamera(renderDt);updateUI();gfx.render(realDt,time,{damage:settings.shake===false?0:damageFlash,phase:boss.phase,ending,impact:settings.shake===false?0:impactPulse,focus:player.actor.root.position,cinematic:!!director?.active});
+ impactPulse=Math.max(0,impactPulse-renderDt*3.5);damageFlash=Math.max(0,damageFlash-renderDt*2);frameCount++;
+}
 addEventListener('resize',()=>gfx.resize());renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();$('fatal').hidden=false;$('fatal-text').textContent='图形连接中断，请刷新后重试。'});requestAnimationFrame(frame);
 })();

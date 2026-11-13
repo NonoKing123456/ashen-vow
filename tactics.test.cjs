@@ -46,13 +46,13 @@ test('recovery produces slow stable footwork, never a cooldown-bypassing attack'
  assert.equal(A.decide({...g,state:'attack'},player(30,30),[g]).action,'hold');
 });
 
-test('warden reacts to a visible heal with its normal readable thrust',()=>{
+test('warden waits for the heal cue before selecting its normal backhand response',()=>{
  const e=boss(),p=player(0,3,{state:'heal',t:.31});
  assert.equal(A.bossChoice(e,p).moveType,'sweep');
  p.t=.32;const choice=A.bossChoice(e,p);
- assert.equal(choice.reason,'heal-response');assert.equal(choice.moveType,'thrust');
+ assert.equal(choice.reason,'heal-response');assert.equal(choice.moveType,'backhand');
  const attack=C.getBossMove(choice.moveIndex,1);
- assert.equal(attack.type,'thrust');assert.ok(attack.windup>=1&&attack.recovery>.7);
+ assert.equal(attack.type,'backhand');assert.equal(attack.animation.clip,'Sword_Regular_B');assert.ok(attack.windup>=1&&attack.recovery>.7);
  assert.equal(A.decide(e,p,[e]).action,'attack');
 });
 
@@ -64,7 +64,7 @@ test('held guard invites a committed slam after a visible wait, not an instant c
  assert.ok(C.getBossMove(choice.moveIndex,1).windup>1.2);
 });
 
-test('second-phase tactical combos retain the actual safe gap between their blades',()=>{
+test('second-phase tactical combos retain a non-damaging gap between their blade windows',()=>{
  const e=boss({phase:2,cycle:2}),p=player(0,2.2),choice=A.bossChoice(e,p);
  assert.equal(choice.moveType,'combo');const m=C.getBossMove(choice.moveIndex,2);
  assert.equal(m.type,'combo');assert.equal(m.windows.length,2);
@@ -83,13 +83,13 @@ test('decisions are pure, finite and normalized for the same encounter snapshot'
  assert.equal(JSON.stringify({e,p}),snapshot);
 });
 
-test('roll thrust has committed startup, one real blade window and a recovery cancel',()=>{
- const m=C.getMove('dodgeAttack');assert.equal(m.type,'thrust');assert.equal(m.kind,'dodgeAttack');
+test('roll counter cut has committed startup, one blade window and a source recovery',()=>{
+ const m=C.getMove('dodgeAttack');assert.equal(m.type,'cut');assert.equal(m.kind,'dodgeAttack');assert.equal(m.animation.clip,'Sword_Regular_A');assert.equal(m.animation.recoveryClip,'Sword_Regular_A_Rec');assert.equal(m.windows.length,1);
  assert.ok(m.damage>C.getMove('light').damage&&m.stamina<C.getMove('roll').stamina);
  assert.equal(C.samplePose(m,m.windup-.001).active,false);
  assert.equal(C.samplePose(m,m.windup+.001).active,true);
  assert.equal(C.samplePose(m,m.activeEnd+.001).active,false);
- assert.equal(C.canCancel(m,.1,'roll'),false);assert.equal(C.canCancel(m,m.cancelAt,'roll'),true);
+ assert.equal(C.canCancel(m,m.windup*.5,'roll'),false);assert.equal(C.canCancel(m,m.cancelAt,'roll'),true);
 });
 
 test('perfect-guard counter reward changes impact without changing or sharing blade windows',()=>{

@@ -10,7 +10,7 @@ function walkable(level,x,z){
  return !level.obstacles.some(o=>o.w!=null?x>o.x-o.w/2-r&&x<o.x+o.w/2+r&&z>o.z-o.d/2-r&&z<o.z+o.d/2+r:Math.hypot(x-o.x,z-o.z)<r+o.r);
 }
 test('all authored discoveries and bell can be approached through the real level bounds and collisions',()=>{
- const {level}=create();level.setGate(true);
+ const {level}=create();level.setGate(true,true);
  const queue=[[0,18]],seen=new Set(['0,36']);
  for(let i=0;i<queue.length;i++){
   const [x,z]=queue[i];
@@ -39,6 +39,16 @@ test('bell requires the defeated warden, rings once and fully resets for a new r
  level.setReducedMotion(true);level.setBossDefeated(true);level.ringBell();level.update(.5,4);
  assert.equal(bell.rotation.z,0,'reduced-motion ending suppresses the bell swing');
  level.dispose();
+});
+test('the passage opens with the actual door leaves and snapshot resets keep both in sync',()=>{
+ const {level}=create(),gate=()=>level.obstacles.filter(o=>o.kind==='gate'),closed=gate().map(o=>({...o}));
+ assert.equal(closed.length,2);assert.equal(walkable(level,0,-8),false);
+ level.setGate(true);assert.equal(walkable(level,0,-8),false,'commanding open must not remove the still-closed door collision');
+ level.update(1/60,1/60);assert.equal(walkable(level,0,-8),false,'the first opening frame still has insufficient clearance');
+ for(let i=0;i<180;i++)level.update(1/60,i/60);
+ assert.equal(walkable(level,0,-8),true);assert.ok(gate().every((o,i)=>Math.abs(o.z-closed[i].z)>1),'door collision did not follow rotation');
+ level.setGate(false,true);assert.equal(walkable(level,0,-8),false,'a new-run reset must restore both the visible door and collision');
+ level.setGate(true,true);assert.equal(walkable(level,0,-8),true,'a loaded open-gate snapshot must be passable immediately');level.dispose();
 });
 test('relic discovery dims its own marker and bell shell faces outward',()=>{
  const {level}=create();level.setDiscovery('arrival',true);

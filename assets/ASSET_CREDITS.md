@@ -13,7 +13,7 @@
 The base character mesh and its original animation are third-party assets. They
 are not represented as an original sculpture by this project. This project adds
 independent skeleton instances, variant materials, weapons, equipment sockets,
-authored sword motion on the actual bones, gameplay, environment, sound and UI.
+source-calibrated sword motion, an equipped roll adaptation, gameplay, environment, sound and UI.
 The original unarmed Attack clip is not used as a compressed sword attack.
 
 The rejected AutoSprite Hooded Blade downloaded during evaluation is not used in
@@ -44,3 +44,29 @@ re-encoded at quality 91. No image is used as a substitute for a 3D mesh.
 Rain, ripples, wet-patch shapes, foliage geometry and sound design are authored
 by this project. Puddle reflections are environment-map reflections; this
 release does not implement screen-space or planar reflections.
+
+## Knight sword and roll motion — Quaternius Standard libraries
+
+`knight-motion-v15.glb` is an animation-only derivative of these specific
+Standard downloads, each supplied with a CC0 1.0 Universal dedication in its
+original `License.txt`. The copied dedication is retained in
+`licenses/Quaternius-Standard-CC0.txt`.
+
+- Universal Animation Library Standard: https://quaternius.itch.io/universal-animation-library
+- Universal Animation Library 2 Standard: https://quaternius.itch.io/universal-animation-library-2
+- Author pack pages: https://quaternius.com/packs/universalanimationlibrary.html and https://quaternius.com/packs/universalanimationlibrary2.html
+- UAL1 archive SHA256: `cc73fc4e495b82958207316596317a3f40b9fa38065bde1027937452da537724`
+- UAL2 archive SHA256: `4008ea208a604773a2b2177d965f0f5d3195498b5bf838c3f5785d68e95f2a68`
+
+These credits concern those exact Standard archives, not all products or later
+licence editions sold by Quaternius. The original archives/mannequins and full
+libraries are not redistributed here.
+
+The project retargets selected full-length clips from the original 65-joint
+rigs to the existing 22-joint knight without changing its bone lengths. It
+calibrates T/A rest poses and the opposite palm transverse axes. Source root
+trajectories remain as animation metadata; collision-aware navigation consumes
+their scaled displacement. `Armed_Roll` preserves the original Roll trunk, hip,
+leg and root channels while adapting both arms for the physical sword and
+shield. No separate side/back roll is claimed: directional use turns the
+forward roll towards travel. The converter is in `tools/retarget-knight.py`.

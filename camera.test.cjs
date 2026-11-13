@@ -10,8 +10,8 @@ test('camera respects wall height and the nearest of several obstacles',()=>{
  const near={x:0,z:2,w:2,d:.5,h:4},far={x:0,z:6,w:2,d:.5,h:4};
  assert.equal(C.cameraDistance(origin,goal,[far,near]),C.cameraDistance(origin,goal,[near]));
 });
-test('sentinel thrust is readable, distinct, and keeps the contact window in its profile',()=>{
- const cut=C.getSentinelMove(0,1),thrust=C.getSentinelMove(1,1);
- assert.equal(thrust.type,'thrust');assert.ok(thrust.windup>cut.windup);assert.ok(thrust.total>thrust.activeEnd);
- assert.equal(C.samplePose(thrust,thrust.windup-.01).active,false);assert.equal(C.samplePose(thrust,thrust.windup+.05).active,true);
+test('sentinel backhand keeps its own source clip and profile contact window',()=>{
+ const cut=C.getSentinelMove(0,1),backhand=C.getSentinelMove(1,1);
+ assert.equal(backhand.type,'backhand');assert.equal(backhand.animation.clip,'Sword_Regular_B');assert.ok(backhand.windup>cut.windup);assert.ok(backhand.total>backhand.activeEnd);
+ assert.equal(C.samplePose(backhand,backhand.windup-.01).active,false);assert.equal(C.samplePose(backhand,(backhand.windup+backhand.activeEnd)/2).active,true);
 });

@@ -42,9 +42,10 @@ for(const [name,dir,times]of [['forward roll',[0,0,1],[.21,.35,.56]],['side roll
 });
 
 for(const mode of ['idle','guard','attack'])test('wall-aware '+mode+' keeps the real held geometry inside a narrow corner',()=>{
- const a=AshenCharacters.createKnight({THREE:T,scene:new T.Scene()}),obstacles=[{x:0,z:.51,w:4,d:.1,h:3},{x:.51,z:0,w:.1,d:4,h:3}],move=C.getMove('light');
+ const a=AshenCharacters.createKnight({THREE:T,scene:new T.Scene()}),obstacles=[{x:0,z:.51,w:4,d:.1,h:3},{x:.51,z:0,w:.1,d:4,h:3}],move=C.getMove('light'),entity={x:0,z:0,radius:.46},world={bounds:[{x:0,z:0,w:20,d:20}],obstacles};
  for(let i=0;i<60;i++){
   a.animate({state:mode==='attack'?'attack':'idle',time:mode==='attack'?Math.min(i/60,move.total):i/60,dt:1/60,t:i/60,speed:0,guarding:mode==='guard',combat:true,attack:mode==='attack'?move:null,obstacles});
+  const fit=AshenNavigation.fitPose(entity,a.contactPoints,world);assert.equal(fit.resolved,true);a.root.position.set(entity.x,0,entity.z);a.updateEquipment();
   for(const item of [a.weapon.group,a.shield])if(item?.visible){item.updateWorldMatrix(true,true);item.traverse(mesh=>{if(!mesh.isMesh)return;const p=mesh.geometry.attributes.position;for(let j=0;j<p.count;j++){vertex.fromBufferAttribute(p,j).applyMatrix4(mesh.matrixWorld);assert.ok(vertex.x<.463&&vertex.z<.463,'held geometry crosses the solid wall at '+i+': '+vertex.toArray());}});}
  }
  for(const surface of weightedSurface(a))for(const p of surface.points)assert.ok(p.x<.463&&p.z<.463,'weighted armour crosses a wall: '+p.toArray());
@@ -64,4 +65,24 @@ test('every authored strike returns to the same combat grip without a wrist flip
   a.animate({state:'idle',time:0,t:1+move.total+1/60,dt:1/60,speed:0,combat:true});
   const after=a.weapon.group.getWorldQuaternion(new T.Quaternion());assert.ok(before.angleTo(after)<.15,kind+' snaps its wrist on recovery');assert.ok(grip.distanceTo(a.weapon.group.getWorldPosition(new T.Vector3()))<.08,kind+' jumps its palm on recovery');
  }
+});
+for(const [name,yaw,direction]of [['forward evasion',0,[0,0,1]],['lateral evasion',0,[1,0,0]],['backward evasion',Math.PI/2,[-1,0,0]],['fallen',0,[0,0,1]],['fallen turned',Math.PI/2,[0,0,1]]])test('final production '+name+' respects the corner throughout its actual pose',()=>{
+ const a=AshenCharacters.createKnight({THREE:T,scene:new T.Scene()}),e={x:0,z:0,radius:.46},obstacles=[{x:0,z:.51,w:5,d:.1,h:3},{x:.51,z:0,w:.1,d:5,h:3}],bounds=[{x:0,z:0,w:20,d:20}],dead=name.startsWith('fallen'),move=C.getMove('roll');a.root.rotation.y=yaw;
+ for(let i=0;i<=Math.ceil((dead?2.4:move.total)*120);i++){
+  const time=i/120;a.animate({state:dead?'dead':'roll',dead,attack:dead?null:move,time,t:time,dt:1/120,speed:0,rollDir:new T.Vector3(...direction),obstacles});
+  const fit=AshenNavigation.fitPose(e,a.contactPoints,{bounds,obstacles,player:e});assert.equal(fit.resolved,true,'a feasible pose was not separated from the wall');a.root.position.set(e.x,0,e.z);a.updateEquipment();
+  for(const p of a.skinContactPoints())assert.ok(p.x<.46&&p.z<.46,'a body probe crossed the wall');
+  if(i%10!==0)continue;
+  for(const surface of weightedSurface(a))for(const p of surface.points)assert.ok(p.x<.463&&p.z<.463,'actual weighted armour crosses a wall at '+time+': '+p.toArray());
+  for(const item of [a.weapon.group,a.shield,a.cape])if(item?.visible){item.updateWorldMatrix(true,true);item.traverse(mesh=>{if(!mesh.isMesh)return;const p=mesh.geometry.attributes.position;for(let j=0;j<p.count;j++){vertex.fromBufferAttribute(p,j).applyMatrix4(mesh.matrixWorld);assert.ok(vertex.x<.463&&vertex.z<.463,'actual equipment crosses a wall at '+time+': '+vertex.toArray());}});}
+ }
+});
+test('a planted production foot keeps its world contact during real forward displacement and releases on turning',()=>{
+ const a=AshenCharacters.createKnight({THREE:T,scene:new T.Scene()});let held=0,maxError=0;
+ for(let i=0;i<300;i++){
+  a.root.position.z+=1.3/60;a.animate({state:'idle',time:i/60,t:i/60,dt:1/60,speed:1.3,moveX:0,moveZ:1.3});
+  for(const side of ['left','right'])if(a.footPlant[side]?.active){held++;const actual=a.rig[side+'Foot'].getWorldPosition(new T.Vector3()),anchor=a.footPlant[side].anchor;maxError=Math.max(maxError,actual.distanceTo(anchor));const sole=a.footBounds()[side].min;assert.ok(sole>-.01,'locking pushed the actual sole below ground');}
+ }
+ assert.ok(held>15,'no meaningful support window was exercised');assert.ok(maxError<.003,'the foot did not hold its world contact: '+maxError);
+ a.root.rotation.y+=.2;a.animate({state:'idle',time:5.1,t:5.1,dt:1/60,speed:1.3,moveX:1.3,moveZ:0,yawRate:4});assert.ok(!a.footPlant.left.active&&!a.footPlant.right.active,'a turn must release both contacts');
 });

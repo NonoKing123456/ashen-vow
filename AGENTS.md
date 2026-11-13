@@ -41,3 +41,16 @@ collision changes require the complete matrix below.
 
 The review page is a development tool. Keep its controls out of the game menus.
 Deploy the same verified source snapshot and preserve the existing public URL.
+
+## Reliability baseline
+
+- Freeze decorative/content additions while known defects block basic play.
+- Keep simulation time independent of rendering. Test frame-rate changes,
+  hitstop and suspended-time handoff; do not silently discard ordinary slow frames.
+- Fit the final posed silhouette through navigation after animation, including
+  evasion and death, before taking blade samples. A root circle is insufficient.
+- Use production models and real level obstacles for campaign integration.
+  Rule fixtures, automatic campaign drivers and human visual review are separate
+  evidence; report them separately and never claim one proves another.
+- Prefer a simple action that fits its available animation and space. Do not
+  add pose overrides or art detail to conceal an unverified action foundation.

@@ -4,7 +4,7 @@ function realLevel(){const ctx={THREE:T,console};ctx.globalThis=ctx;vm.createCon
 function blocked(e,obstacles,r){return obstacles.some(o=>o.w!=null?e.x>o.x-o.w/2-r+1e-6&&e.x<o.x+o.w/2+r-1e-6&&e.z>o.z-o.d/2-r+1e-6&&e.z<o.z+o.d/2+r-1e-6:Math.hypot(e.x-o.x,e.z-o.z)<o.r+r-1e-6);}
 function within(e,bounds,r){return bounds.some(b=>e.x>=b.x-b.w/2+r-1e-6&&e.x<=b.x+b.w/2-r+1e-6&&e.z>=b.z-b.d/2+r-1e-6&&e.z<=b.z+b.d/2-r+1e-6);}
 test('real hall crowd separation cannot push a legal player into the adjacent pier',()=>{
- const level=realLevel();try{level.setGate(true);const player={kind:'player',id:'player',hp:120,x:-11,z:-13.3},boss={kind:'boss',id:'boss',hp:360,x:-10.292893218813452,z:-12.59289321881346},ctx={...level,player,entities:[player,boss]};
+ const level=realLevel();try{level.setGate(true,true);const player={kind:'player',id:'player',hp:120,x:-11,z:-13.3},boss={kind:'boss',id:'boss',hp:360,x:-10.292893218813452,z:-12.59289321881346},ctx={...level,player,entities:[player,boss]};
  assert.equal(blocked(player,level.obstacles,.29),false);assert.equal(blocked(boss,level.obstacles,.55),false);
  for(let i=0;i<60;i++){N.move(player,0,0,ctx);assert.equal(blocked(player,level.obstacles,.29),false);assert.ok(within(player,level.bounds,.29));}
  assert.ok(Math.hypot(player.x-boss.x,player.z-boss.z)>1.1,'separation should use the available wall tangent');
@@ -23,13 +23,13 @@ test('adjoining bounds permit their shared opening but retain the outside corner
  N.move(player,4,0,ctx);assert.ok(player.x>3.99);assert.ok(within(player,bounds,.29));N.move(player,0,4,ctx);assert.ok(player.z<=1.21);assert.ok(within(player,bounds,.29));
 });
 test('a real closed gate stops travel, an opened gate permits it and closing around an actor safely recovers it',()=>{
- const level=realLevel();try{const player={kind:'player',x:0,z:-6.5},ctx={...level,player,entities:[]};N.move(player,0,-4,ctx);assert.ok(player.z>-7.37);assert.equal(blocked(player,level.obstacles,.29),false);
- level.setGate(true);N.move(player,0,-3,ctx);assert.ok(player.z<-9);assert.ok(within(player,level.bounds,.29));
- player.x=0;player.z=-8;level.setGate(false);N.move(player,0,0,ctx);assert.equal(blocked(player,level.obstacles,.29),false);assert.ok(within(player,level.bounds,.29));
+ const level=realLevel();try{const player={kind:'player',x:0,z:-6.5},ctx={...level,player,entities:[]};N.move(player,0,-4,ctx);const front=Math.max(...level.obstacles.filter(o=>o.kind==='gate').map(o=>o.z+o.d/2));assert.ok(player.z>=front+.29-1e-5);assert.equal(blocked(player,level.obstacles,.29),false);
+ level.setGate(true,true);N.move(player,0,-3,ctx);assert.ok(player.z<-9);assert.ok(within(player,level.bounds,.29));
+ player.x=0;player.z=-8;level.setGate(false,true);N.move(player,0,0,ctx);assert.equal(blocked(player,level.obstacles,.29),false);assert.ok(within(player,level.bounds,.29));
  }finally{level.dispose();}
 });
 test('normal walking and roll-sized steps stay legal through the actual route and pillar corners',()=>{
- const level=realLevel();try{level.setGate(true);const player={kind:'player',radius:.46,x:0,z:18},ctx={...level,player,entities:[]};
+ const level=realLevel();try{level.setGate(true,true);const player={kind:'player',radius:.46,x:0,z:18},ctx={...level,player,entities:[]};
  for(const [x,z]of [[0,12],[0,3],[-8.5,3],[0,3],[0,-8],[0,-13],[7,-18.3],[0,-29.5]]){for(let i=0;i<1000&&Math.hypot(x-player.x,z-player.z)>.08;i++){const dx=x-player.x,dz=z-player.z,d=Math.hypot(dx,dz),step=Math.min(d,i%3===0?.257:.06);N.move(player,dx/d*step,dz/d*step,ctx);assert.equal(blocked(player,level.obstacles,.46),false);assert.ok(within(player,level.bounds,.46));}assert.ok(Math.hypot(x-player.x,z-player.z)<.1,'route stopped before '+[x,z]);}
  }finally{level.dispose();}
 });

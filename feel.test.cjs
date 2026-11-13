@@ -36,7 +36,7 @@ test('light chain alternates cuts and ends with a stronger committed overhead',(
  assert.equal(moves[0].slash,-moves[1].slash);
  assert.equal(moves[2].slash,0);
  assert.ok(moves[2].damage>moves[1].damage&&moves[2].total>moves[0].total);
- for(const m of moves)assert.ok(m.total>=.6&&m.total<=1);
+ for(const m of moves){assert.ok(m.total>=m.animation.duration-.001,'a light cut must retain its complete source recovery');assert.ok(m.recovery>m.active&&m.guardAt>=m.activeEnd&&m.cancelAt>=m.activeEnd);}
  assert.deepEqual(C.getMove('light',3),moves[0]);
  assert.ok(C.getMove('heavy').total>1&&C.getMove('heavy').poise>moves[2].poise);
 });
@@ -50,8 +50,10 @@ test('pose channels share the exact damage window and never hit during anticipat
 });
 test('attacks commit until recovery but allow an authored combo and dodge window',()=>{
  const m=C.getMove('light');
- for(const action of ['roll','guard','light','move','heal'])assert.equal(C.canCancel(m,.25,action),false);
- assert.equal(C.canCancel(m,.36,'light'),true);
+ for(const action of ['roll','guard','light','move','heal'])assert.equal(C.canCancel(m,m.windup*.5,action),false);
+ assert.equal(C.canCancel(m,m.chainOpen-.001,'light'),false);
+ assert.equal(C.canCancel(m,m.chainOpen,'light'),true);
+ assert.equal(C.canCancel(m,m.chainClose+.001,'light'),false);
  assert.equal(C.canCancel(m,m.cancelAt-.001,'roll'),false);
  assert.equal(C.canCancel(m,m.cancelAt,'roll'),true);
  assert.equal(C.canCancel(m,m.total,'move'),true);
@@ -59,10 +61,12 @@ test('attacks commit until recovery but allow an authored combo and dodge window
 });
 test('roll keeps vulnerable startup and recovery and a fixed middle protection window',()=>{
  const m=C.getMove('roll');
- assert.equal(C.samplePose(m,.04).invulnerable,false);
- assert.equal(C.samplePose(m,.08).invulnerable,true);
- assert.equal(C.samplePose(m,.4).invulnerable,true);
- assert.equal(C.samplePose(m,.401).invulnerable,false);
+ assert.ok(m.iframeStart>=m.windup&&m.iframeEnd<=m.activeEnd&&m.iframeEnd<m.total);
+ assert.equal(C.samplePose(m,m.iframeStart-.001).invulnerable,false);
+ assert.equal(C.samplePose(m,m.iframeStart).invulnerable,true);
+ assert.equal(C.samplePose(m,(m.iframeStart+m.iframeEnd)/2).invulnerable,true);
+ assert.equal(C.samplePose(m,m.iframeEnd).invulnerable,true);
+ assert.equal(C.samplePose(m,m.iframeEnd+.001).invulnerable,false);
 });
 test('perfect guard has zero chip, refunds stamina and staggers the attacker',()=>{
  const hit=C.guardHit(28,80,.16);

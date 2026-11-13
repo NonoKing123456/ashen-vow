@@ -1,0 +1,224 @@
+{
+  "status": "Frozen offline resource; production full-speed and real-level acceptance pending",
+  "output": {
+    "path": "assets/knight-motion-v15.glb",
+    "sha256": "4fc1dacf6dfbb67417002d18fa44d3aad72377de3518a80cbb0383835737d001",
+    "bytes": 836680,
+    "bones": 22,
+    "animations": 19
+  },
+  "rebuild": {
+    "command": "blender --background --python tools/retarget-knight.py -- --fps 60",
+    "verified_environment": {
+      "os": "Windows",
+      "blender": "4.4.0",
+      "node": "24.19.0"
+    },
+    "isolated_zip_only_source_rebuild": {
+      "passed": true,
+      "sha256": "4fc1dacf6dfbb67417002d18fa44d3aad72377de3518a80cbb0383835737d001",
+      "preexisting_motion_asset": false,
+      "preexisting_equipment_snapshot": false,
+      "ignored_helper_scripts": false
+    }
+  },
+  "tracked_tool_hashes": {
+    "tools/retarget-knight.py": "0de37c2657d42cc1f4e1213435768dc3b8efc0e34384df6c9dffef5065483918",
+    "tools/export-equipment-binding.cjs": "f57e23818cf38e155abca051cc6b30d43fbda45ce5b3769ae171296fb73d6f43",
+    "tools/retarget-source-manifest.json": "71121b2962465831eaa22b68413dd2903eeaa06089a65f9c23306cd2886e83d6",
+    "tools/RETARGET.md": "30cdecb6f515080f25c749e10b8e4770039873597ce307012030a74f2a3ba42e"
+  },
+  "production_inputs": {
+    "target": {
+      "path": "assets\\knight-v11.glb",
+      "sha256": "63d99f37f4fe002bf7093cd3ea1561e9bcc718862629afbdcaf3566e291d88d4",
+      "joint_count": 22
+    },
+    "characters_lf_normalized_sha256": "8432139e48a76bf2eb9b28cf9f9dadb35eab244178a246d9f6461e222bf67304",
+    "equipment_snapshot_sha256": "cd4b1ee5811f3cc4ccce76a8d9fd83d5149b6d7cf50ed22acad7e5a2fe560854",
+    "vendor_hashes": {
+      "vendor/three.min.js": "4480f80d693b7d07768adae6f3c3602a5841695427883acf59078a7ae69d8402",
+      "vendor/GLTFLoader.js": "20f270205891ba3f1acaa12b090dabc85aa299ab9bf7fd5fbad1c83b91a8a1e4"
+    }
+  },
+  "official_sources": {
+    "UAL1": {
+      "zip": "Universal Animation Library[Standard].zip",
+      "sha256": "cc73fc4e495b82958207316596317a3f40b9fa38065bde1027937452da537724",
+      "files": {
+        "UAL1_Standard.glb": "69591853d817488edaa8fd9bf8fc1d821eaeaf789f8627b3cd23b41c4ed67997",
+        "UAL1_Standard_RM.glb": "be684571ed655a1b892c2c07e6e2aeca053b606c442d34004adaf1d944090d01"
+      }
+    },
+    "UAL2": {
+      "zip": "Universal Animation Library 2[Standard].zip",
+      "sha256": "4008ea208a604773a2b2177d965f0f5d3195498b5bf838c3f5785d68e95f2a68",
+      "files": {
+        "UAL2_Standard.glb": "8cee20ab1bc55130092447e810e26df22dd2803eccc54f52137a7d54d7ab88a8",
+        "UAL2_Standard_RM.glb": "814eee878f82934992d3ea746c539df25e981487109c591f5efbb8dd03286f99"
+      }
+    }
+  },
+  "clips": [
+    {
+      "name": "Sword_Idle",
+      "duration": 1.6666666269302368
+    },
+    {
+      "name": "Sword_Attack",
+      "duration": 1.5333333015441895
+    },
+    {
+      "name": "Roll",
+      "duration": 1.4666666984558105
+    },
+    {
+      "name": "Hit_Chest",
+      "duration": 0.3333333432674408
+    },
+    {
+      "name": "Hit_Head",
+      "duration": 0.4333333373069763
+    },
+    {
+      "name": "Death01",
+      "duration": 2.4000000953674316
+    },
+    {
+      "name": "Armed_Roll",
+      "duration": 1.4666666984558105
+    },
+    {
+      "name": "Idle_Shield_Loop",
+      "duration": 2.5
+    },
+    {
+      "name": "Idle_Shield_Break",
+      "duration": 1.0666667222976685
+    },
+    {
+      "name": "Shield_OneShot",
+      "duration": 0.8333333134651184
+    },
+    {
+      "name": "Sword_Block",
+      "duration": 1.2333333492279053
+    },
+    {
+      "name": "Sword_Dash",
+      "duration": 1.5666667222976685
+    },
+    {
+      "name": "Sword_Regular_A",
+      "duration": 0.4333333373069763
+    },
+    {
+      "name": "Sword_Regular_A_Rec",
+      "duration": 0.9666666388511658
+    },
+    {
+      "name": "Sword_Regular_B",
+      "duration": 0.5333333611488342
+    },
+    {
+      "name": "Sword_Regular_B_Rec",
+      "duration": 1.0333333015441895
+    },
+    {
+      "name": "Sword_Regular_C",
+      "duration": 2
+    },
+    {
+      "name": "Sword_Regular_Combo",
+      "duration": 3
+    },
+    {
+      "name": "Sword_Heavy_Combo",
+      "duration": 4.333333492279053
+    }
+  ],
+  "checks": {
+    "target_rest_trs_exact": true,
+    "motion_only_no_mesh_skin_texture": true,
+    "all_clips_22_rotations_and_pelvis_translation": true,
+    "bind_matrix_max_errors": {
+      "target": {
+        "joints": 22,
+        "max_world_times_inverse_bind_error": 0.000007033348083496094
+      },
+      "UAL1": {
+        "joints": 65,
+        "max_world_times_inverse_bind_error": 8.344650268554688e-7
+      },
+      "UAL2": {
+        "joints": 65,
+        "max_world_times_inverse_bind_error": 8.344650268554688e-7
+      }
+    },
+    "all_components_finite": true,
+    "finite_components": 161460,
+    "max_quaternion_norm_error": 1.515477798808007e-7,
+    "source_rest_direction_max_error_degrees": 0.000941684078693228,
+    "fixed_joint_length_max_error_m": 3.2792868015496524e-7,
+    "armed_roll_source_protected_tracks": [
+      "pelvis.rotation",
+      "spine1.rotation",
+      "spine2.rotation",
+      "chest.rotation",
+      "neck.rotation",
+      "head.rotation",
+      "clavicle_L.rotation",
+      "clavicle_R.rotation",
+      "thigh_L.rotation",
+      "shin_L.rotation",
+      "foot_L.rotation",
+      "toe_L.rotation",
+      "thigh_R.rotation",
+      "shin_R.rotation",
+      "foot_R.rotation",
+      "toe_R.rotation",
+      "pelvis.translation"
+    ],
+    "armed_roll_native_arm_endpoints_exact": true,
+    "armed_roll_root_metadata_exact": true,
+    "armed_roll_sampled_geometry": {
+      "poses": 90,
+      "weighted_body_vertices": 37141,
+      "weighted_body_triangles": 59281,
+      "sword": {
+        "minimum_y_m": 0.15443259168545342,
+        "frames_with_surface_crossings": 0
+      },
+      "shield": {
+        "minimum_y_m": 0.009795158275680197,
+        "frames_with_surface_crossings": 0
+      }
+    }
+  },
+  "observed_limits": [
+    "Supine leg-raised middle phase remains from source roll; large equipment prevents a true two-arm knee embrace.",
+    "Raw shield ground margin is approximately 9.8mm; runtime body grounding and terrain require review.",
+    "Raw source cape intersects body/floor; the retargeter does not change cloth.",
+    "Static representative views and sampled triangle diagnostics do not prove full-speed animation quality or all contacts.",
+    "Source-native endpoints require production recovery/carry blending."
+  ],
+  "offline_evidence": [
+    ".asset-work/retarget/knight-armed-roll-side.png",
+    ".asset-work/retarget/knight-armed-roll-three-quarter.png",
+    ".asset-work/retarget/ARMED_ROLL_GEOMETRY_AUDIT.json",
+    ".asset-work/retarget/FINAL_ASSET_AUDIT.json",
+    ".asset-work/retarget/BIND_AND_SCHEMA_AUDIT.json"
+  ],
+  "commit_ready": [
+    "assets/knight-motion-v15.glb",
+    "tools/retarget-knight.py",
+    "tools/export-equipment-binding.cjs",
+    "tools/retarget-source-manifest.json",
+    "tools/retarget-output-manifest.json",
+    "tools/RETARGET.md"
+  ],
+  "not_for_commit": [
+    ".asset-work/",
+    "official source ZIPs"
+  ]
+}

@@ -130,7 +130,14 @@ function create({THREE:T,scene,renderer,M,surfaces}){
   const center=group(p,x,2.85,.25);ring(center,0,0,0,.47,.04,bronze);for(const s of [-1,1])for(let i=0;i<3;i++)beam(center,[0,-.5+i*.28,.02],[s*(.22-i*.045),-.23+i*.28,.02],.018,bronze,5);beam(center,[0,-.9,.02],[0,.88,.02],.025,bronze,6);
   for(const y of [1.1,4.3]){const hinge=cylinder(p,0,y,.02,.115,.7,bronze,10);box(p,x,y,.23,2.76,.14,.08,bronze);}
  }
- door(doorLeft,-1);door(doorRight,1);const gateBarrier={x:0,z:-8,w:6.3,d:.7,kind:'gate',h:5.8};obstacles.push(gateBarrier);let gateTarget=0,gateAmount=0;
+ door(doorLeft,-1);door(doorRight,1);let gateTarget=0,gateAmount=0;
+ const gateLeaves=[doorLeft,doorRight].map(object=>({object,collider:{x:0,z:0,w:0,d:0,kind:'gate',h:5.5}})),gateBox=new T.Box3();
+ for(const leaf of gateLeaves)obstacles.push(leaf.collider);
+ function syncGate(){
+  doorLeft.rotation.y=gateAmount*PI*.56;doorRight.rotation.y=-gateAmount*PI*.56;
+  for(const {object,collider}of gateLeaves){object.updateWorldMatrix(true,true);gateBox.setFromObject(object);Object.assign(collider,{x:(gateBox.min.x+gateBox.max.x)/2,z:(gateBox.min.z+gateBox.max.z)/2,w:gateBox.max.x-gateBox.min.x,d:gateBox.max.z-gateBox.min.z,h:gateBox.max.y});}
+ }
+ syncGate();
 
  // IV. Hall of the Uncrowned: a broad, quiet fighting floor framed by massive
  // side piers and a broken roof. Its throne and vertical rear aperture set the
@@ -434,11 +441,11 @@ function create({THREE:T,scene,renderer,M,surfaces}){
   ringBell(){if(!bossDefeated||bellRung)return false;bellRung=true;bellAge=0;return true;},
   setReducedMotion(value){reducedMotion=!!value;},
   get ending(){return endingAmount;},
-  setGate(open){gateTarget=open?1:0;const i=obstacles.indexOf(gateBarrier);if(open&&i>=0)obstacles.splice(i,1);else if(!open&&i<0)obstacles.push(gateBarrier);},
+  setGate(open,snap=false){gateTarget=open?1:0;if(snap){gateAmount=gateTarget;syncGate();}},
   update(dt,t){
    updateLandmarks(dt,t);const windTime=reducedMotion?0:t;
    mistUniforms.clock.value=windTime;atmosphereUniforms.clock.value=windTime;atmosphereUniforms.ending.value=endingAmount;
-   gateAmount=lerp(gateAmount,gateTarget,1-Math.exp(-1.9*dt));doorLeft.rotation.y=gateAmount*PI*.56;doorRight.rotation.y=-gateAmount*PI*.56;
+   if(Math.abs(gateAmount-gateTarget)>.00001){gateAmount=lerp(gateAmount,gateTarget,1-Math.exp(-1.9*dt));if(Math.abs(gateAmount-gateTarget)<.00001)gateAmount=gateTarget;syncGate();}
    for(const f of fire){f.mesh.scale.y=f.scale.y*(.86+Math.sin(windTime*7.4+f.phase)*.18);f.mesh.scale.x=f.scale.x*(.94+Math.sin(windTime*5.3+f.phase)*.1);f.mesh.rotation.z=Math.sin(windTime*3.4+f.phase)*.09;}
    for(const l of lights)l.light.intensity=l.base*(.96+Math.sin(windTime*5+l.phase)*.045);
    for(const b of cloths){

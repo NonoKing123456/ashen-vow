@@ -117,5 +117,38 @@ function segmentCast(from,to,obstacles,padding=.02){
  }
  return best;
 }
-const api={move,radius,segmentCast};global.AshenNavigation=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
+// Resolve the final posed silhouette, after animation and equipment attachment.
+// Points stay in world space; only this module may change horizontal position.
+// Roots use their normal swept collider, so pose correction cannot teleport
+// through a pillar or override the map boundary.
+function fitPose(entity,points,options={}){
+ if(!points?.length)return {x:0,z:0,resolved:true};
+ const skin=.022,box={minX:entity.x,maxX:entity.x,minZ:entity.z,maxZ:entity.z,minY:Infinity,maxY:-Infinity};
+ for(const p of points){box.minX=Math.min(box.minX,p.x);box.maxX=Math.max(box.maxX,p.x);box.minZ=Math.min(box.minZ,p.z);box.maxZ=Math.max(box.maxZ,p.z);box.minY=Math.min(box.minY,p.y);box.maxY=Math.max(box.maxY,p.y);}
+ const bounds=options.bounds||[],near=(options.obstacles||[]).filter(o=>box.maxY>=-skin&&box.minY<=(o.h??4)+skin&&box.minX<(o.x+(o.w??o.r*2)/2+skin)&&box.maxX>(o.x-(o.w??o.r*2)/2-skin)&&box.minZ<(o.z+(o.d??o.r*2)/2+skin)&&box.maxZ>(o.z-(o.d??o.r*2)/2-skin));
+ const boundsFit=!bounds.length||bounds.some(b=>box.minX>=b.x-b.w/2+skin&&box.maxX<=b.x+b.w/2-skin&&box.minZ>=b.z-b.d/2+skin&&box.maxZ<=b.z+b.d/2-skin);
+ if(!near.length&&boundsFit)return {x:0,z:0,resolved:true};
+ const ctx={bounds,obstacles:options.obstacles||[]},r=radius(entity,options.player);
+ const start={x:entity.x,z:entity.z};let at=recover(start,ctx,r),resolved=false;
+ for(let pass=0;pass<16;pass++){
+  let correction=null,worst=0;const dx=at.x-start.x,dz=at.z-start.z;
+  for(const source of points||[]){
+   if(!Number.isFinite(source.x)||!Number.isFinite(source.y)||!Number.isFinite(source.z))continue;
+   const point={x:source.x+dx,y:source.y,z:source.z+dz};
+   const hit=near.length||pass>0?segmentCast({x:at.x,y:point.y,z:at.z},point,ctx.obstacles,skin):null;
+   if(hit&&Math.abs(hit.normal.y)<.5){const depth=-((point.x-hit.point.x)*hit.normal.x+(point.z-hit.point.z)*hit.normal.z)+.002;if(depth>worst){worst=depth;correction={x:hit.normal.x*depth,z:hit.normal.z*depth};}}
+   if(ctx.bounds.length&&(!boundsFit||pass>0)&&!insideBounds(point,ctx.bounds,skin)){
+    let nearest=null,distance=Infinity;
+    for(const b of ctx.bounds){const x=Math.max(b.x-b.w/2+skin,Math.min(b.x+b.w/2-skin,point.x)),z=Math.max(b.z-b.d/2+skin,Math.min(b.z+b.d/2-skin,point.z)),d=Math.hypot(x-point.x,z-point.z);if(d<distance){distance=d;nearest={x:x-point.x,z:z-point.z};}}
+    if(distance>worst){worst=distance;correction=nearest;}
+   }
+  }
+  if(!correction||worst<.001){resolved=true;break;}
+  const next=sweep(at,correction.x,correction.z,ctx,r);
+  if(Math.hypot(next.x-at.x,next.z-at.z)<1e-6)break;at=next;
+ }
+ entity.x=at.x;entity.z=at.z;
+ return {x:at.x-start.x,z:at.z-start.z,resolved};
+}
+const api={move,radius,segmentCast,fitPose};global.AshenNavigation=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

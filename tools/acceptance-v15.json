@@ -1,0 +1,51 @@
+{
+  "status": "local candidate, not published; character motion style acceptance remains open",
+  "date": "2026-11-13",
+  "automated": {
+    "command": "npm test",
+    "passed": 195,
+    "failed": 0,
+    "duration_ms": 104176.63,
+    "production_flow": {
+      "fixed_steps": 5105,
+      "hp": 101,
+      "flasks": 4,
+      "deaths": 0,
+      "parries": 5,
+      "executions": 2,
+      "complete": true,
+      "method": "public-input driver with state observation; real GLB and level, rendering/audio devices omitted"
+    }
+  },
+  "visual": {
+    "neutral_three_views": true,
+    "runtime_frame_replays": [
+      "walk",
+      "sword",
+      "roll"
+    ],
+    "real_night_public_input_smoke": "first guard defeated, 101 HP, paused",
+    "frame_replay_is_performance_capture": false
+  },
+  "remaining": [
+    "Forward roll still uses a generic diving motion rather than a final heavy-armour knight motion.",
+    "Side/back evasion turns the forward roll towards travel.",
+    "Lateral/back locomotion is adapted from forward motion, including crossing steps.",
+    "Automatic campaign completion does not establish human readability or universal collision/performance guarantees."
+  ],
+  "source_lf_normalized_sha256": {
+    "characters.js": "8432139e48a76bf2eb9b28cf9f9dadb35eab244178a246d9f6461e222bf67304",
+    "motion.js": "ea5af416d6df9deda2c58d924a3bc91e15f38aacecf52cbc34886e60daf3319c",
+    "rig-constraints.js": "b275a0fdf901dd84486c597d6482745fb830b687c7b9832e3777091ff55a3c65",
+    "locomotion.js": "98310165e17c2cac8b048768e09454bcfa15e877aa3cec6767789e3fda2ecc4b",
+    "navigation.js": "6532f7fe7ec1de75977787c0ab8c8f2bf44f1d5bf7e1874b727b217eade3e669",
+    "feel.js": "1136767ec9f8562b5bddddbd1695b06004dce69d6e025f22dd8f74e9d5661985",
+    "tactics.js": "7e6a3f399b86717da365d1dd0044a23765f3b5ba4b6b8a767b0ac7253ee9a5bd",
+    "game.js": "ad5fb262c07fbcab6a8d8e37be22d3f4d98ba1db3017c572485bccde8ecb7add",
+    "level.js": "73671bb37fab89616a7c2bedd79db03181c4f349524195583438273398c1a4cf",
+    "review.js": "a545f819bf7f08a496099659bad01b7e72ff61a0aa85523d8d3186cd35d179b8",
+    "review.html": "dd26395d93b40707ed3d510746a93e6d104c0bc37b49923efc08e15f4509d295",
+    "index.html": "06bec7ab765edd49e570266e2a2101dbbc69af8337673f40d157175df6a5ddd5",
+    "assets/knight-motion-v15.glb": "4fc1dacf6dfbb67417002d18fa44d3aad72377de3518a80cbb0383835737d001"
+  }
+}

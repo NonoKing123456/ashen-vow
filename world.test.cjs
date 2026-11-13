@@ -55,3 +55,47 @@ test('relic discovery dims its own marker and bell shell faces outward',()=>{
  }
  assert.ok(exterior>40);level.dispose();
 });
+
+test('wind leaves embroidered banner mountings fixed and reduced motion holds their folds still',()=>{
+ const {level}=create(),banners=[];
+ level.root.traverse(o=>{if(o.name.startsWith('funeral-banner-'))banners.push(o);});
+ assert.equal(banners.length,4);
+ const before=banners.map(o=>o.geometry.attributes.position.array.slice());
+ level.update(1/60,1.2);
+ let movingHem=false;
+ for(let b=0;b<banners.length;b++){
+  const p=banners[b].geometry.attributes.position,maxY=Math.max(...Array.from({length:p.count},(_,i)=>before[b][i*3+1]));
+  for(let i=0;i<p.count;i++){
+   const at=i*3;
+   if(Math.abs(before[b][at+1]-maxY)<.001){
+    assert.equal(p.getX(i),before[b][at]);assert.equal(p.getY(i),before[b][at+1]);assert.equal(p.getZ(i),before[b][at+2]);
+   }else if(Math.abs(p.getZ(i)-before[b][at+2])>.001)movingHem=true;
+  }
+ }
+ assert.ok(movingHem,'free fabric should respond to wind');
+ level.setReducedMotion(true);level.update(1/60,2);
+ const held=banners.map(o=>o.geometry.attributes.position.array.slice());level.update(1/60,9);
+ banners.forEach((o,i)=>assert.deepEqual(o.geometry.attributes.position.array,held[i]));
+ assert.ok(level.stats.staticTriangles<80000,'environment detail retains a bounded static mesh budget');
+ level.dispose();
+});
+
+test('world rain respects chapel shelter, quality budget and reduced-motion impact settings',()=>{
+ const weatherContext={THREE:T};weatherContext.window=weatherContext;vm.createContext(weatherContext);
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'weather.js'),'utf8'),weatherContext);
+ const scene=new T.Scene(),weather=weatherContext.AshenWeather.create({THREE:T,scene,bounds:[{x:0,z:0,w:32,d:48}]});
+ weather.update(1/60,2,{x:-7,z:3});
+ const rain=scene.getObjectByName('world-rain'),rings=scene.getObjectByName('rain-impact-rings'),p=rain.geometry.attributes.position;
+ let sheltered=0,exposed=0;
+ for(let i=0;i<p.count;i+=2){
+  assert.ok(Number.isFinite(p.getX(i))&&Number.isFinite(p.getY(i))&&Number.isFinite(p.getZ(i)));
+  if(p.getX(i)>-12.2&&p.getX(i)<-6&&p.getZ(i)>-.2&&p.getZ(i)<6.5){assert.equal(p.getY(i),-50);sheltered++;}
+  else if(p.getY(i)>-1)exposed++;
+ }
+ assert.ok(sheltered>0&&exposed>0,'roof shelter should affect only its own footprint');
+ weather.setQuality('low');assert.equal(rain.geometry.drawRange.count,600);assert.equal(rings.visible,false);
+ weather.setQuality('high');assert.equal(rain.geometry.drawRange.count,1300);assert.equal(rings.visible,true);
+ weather.setReducedMotion(true);assert.equal(rings.visible,false);weather.update(1/60,4,{x:0,z:15});assert.ok(rain.material.opacity<.08);
+ weather.setReducedMotion(false);assert.equal(rings.visible,true);
+ weather.dispose();assert.equal(scene.children.length,0);
+});

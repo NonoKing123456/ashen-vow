@@ -6,6 +6,7 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
  const root=new T.Group(),architecture=new T.Group(),life=new T.Group();root.name="The Exile's Procession";root.add(architecture,life);scene.add(root);
  const textures=[],materials=[],obstacles=[],fire=[],lights=[],cloths=[],memoryVisuals=new Map(),mistUniforms={clock:{value:0}};
+ const atmosphereUniforms={clock:{value:0},ending:{value:0}};
  let bossDefeated=false,bellRung=false,bellAge=0,endingAmount=0,reducedMotion=false;
  const bounds=[{x:0,z:15.5,w:9,d:13},{x:0,z:1.5,w:12,d:17},{x:-8.5,z:3.25,w:7,d:6.5},{x:0,z:-8,w:6.2,d:4},{x:0,z:-21,w:23,d:26}];
  const spawn={x:0,y:0,z:18},bossSpawn={x:0,y:0,z:-25};
@@ -30,11 +31,15 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  function data(bytes,srgb=false){const tex=new T.DataTexture(bytes,256,256,T.RGBAFormat);tex.wrapS=tex.wrapT=T.RepeatWrapping;tex.minFilter=T.LinearMipMapLinearFilter;tex.magFilter=T.LinearFilter;tex.generateMipmaps=true;tex.encoding=srgb?T.sRGBEncoding:T.LinearEncoding;tex.anisotropy=renderer&&renderer.capabilities?Math.min(4,renderer.capabilities.getMaxAnisotropy()):1;tex.needsUpdate=true;textures.push(tex);return tex;}
  const bump=data(grain);for(const [i,m]of [ashStone,obsidian,weathered,edge,flooring,robe,bone,rock].entries()){const map=data(patina.slice(),true);map.offset.set(i*.241,i*.173);map.rotation=i*.47;m.map=map;m.bumpMap=bump;m.bumpScale=m===flooring?.022:.036;}
  // Texture color is retained instead of multiplying photographs by dark stone tint.
- const wallMaterials=[ashStone,obsidian,weathered,edge,rock],floorMaterials=[flooring];
+ const wallMaterials=[ashStone,obsidian,weathered,edge,rock];
  if(surfaces){
   for(const m of wallMaterials){m.map=surfaces.wall.color;m.normalMap=surfaces.wall.normal;m.normalScale=new T.Vector2(.38,.38);m.roughnessMap=surfaces.wall.roughness;m.bumpMap=null;m.roughness=1;m.color.set(m===obsidian?'#727d83':m===edge?'#bec4bd':'#a3aeb1').convertSRGBToLinear();m.userData.worldUV=.38;}
   flooring.map=surfaces.floor.color;flooring.normalMap=surfaces.floor.normal;flooring.normalScale=new T.Vector2(.60,.60);flooring.roughnessMap=surfaces.floor.roughness;flooring.bumpMap=null;flooring.roughness=.68;flooring.color.set('#b1babe').convertSRGBToLinear();flooring.userData.worldUV=.32;
  }
+ // Baked, world-space mineral variation survives static batching without another
+ // texture or shader pass. Damp footings and vertical rain stains break broad walls.
+ for(const m of [...wallMaterials,flooring])m.vertexColors=true;
+ const paving=flooring.clone();paving.color.set('#bac2bf').convertSRGBToLinear();paving.roughness=.76;materials.push(paving);
  function group(p,x=0,y=0,z=0){const g=new T.Group();g.position.set(x,y,z);p.add(g);return g;}
  function mesh(p,geometry,material,x=0,y=0,z=0,cast=true){const m=new T.Mesh(geometry,material);m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;p.add(m);return m;}
  function box(p,x,y,z,w,h,d,m=ashStone,cast=true){return mesh(p,new T.BoxGeometry(w,h,d),m,x,y,z,cast);}
@@ -51,16 +56,25 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  function pointedShape(half,rise,base,segments=32){const pts=[];for(let i=0;i<=segments;i++){const x=-half+2*half*i/segments;pts.push([x,base+rise*Math.sqrt(Math.max(0,1-Math.abs(x)/half))]);}return pts;}
  function arch(p,cx,base,z,span,rise,thickness=.5,depth=.7,m=ashStone,broken=false){const outer=pointedShape(span*.5+thickness,rise+thickness,base),inner=pointedShape(span*.5,rise,base);const s=new T.Shape();s.moveTo(...outer[0]);for(const pt of outer.slice(1))s.lineTo(...pt);s.lineTo(...inner[inner.length-1]);for(const pt of inner.slice(0,-1).reverse())s.lineTo(...pt);s.closePath();const g=new T.ExtrudeGeometry(s,{depth,bevelEnabled:true,bevelSegments:1,bevelSize:.025,bevelThickness:.025,steps:1,curveSegments:1});g.translate(0,0,-depth*.5);const o=mesh(p,g,m,cx,0,z);if(broken){const a=g.attributes.position;for(let i=0;i<a.count;i++){if(a.getX(i)>0&&a.getY(i)>base+rise*.8)a.setY(i,a.getY(i)-.18*hash(i,3));}a.needsUpdate=true;g.computeVertexNormals();}return o;}
  function structuralWindow(p,x,y,z,w,h){const q=group(p,x,y,z);box(q,-w*.5-.10,h*.5,0,.18,h,.27,edge);box(q,w*.5+.10,h*.5,0,.18,h,.27,edge);box(q,0,-.07,0,w+.45,.16,.42,edge);arch(q,0,h,0,w,w*.68,.15,.28,edge);box(q,0,h*.50,.02,.075,h,.12,bronze);return q;}
- function wall(x,z,w,d,h=4.1,broken=false){const q=group(architecture,x,0,z);box(q,0,h*.5,0,w,h,d,weathered);box(q,0,.18,0,w+.13,.36,d+.15,deep);if(!broken)box(q,0,h+.10,0,w+.16,.22,d+.18,edge);else{const n=Math.max(2,Math.floor(w/1.2));for(let i=0;i<n;i++){const xx=-w*.5+(i+.5)*w/n,hh=.16+random()*.55;box(q,xx,h+hh*.5,0,w/n*.86,hh,d*.88,i%2?obsidian:ashStone);}}for(let y=.95;y<h-.3;y+=1.1)box(q,0,y,d*.5+.012,w,.025,.025,deep);const c=blockCollision(x,z,w,d);c.h=h+.25;return q;}
+ function wall(x,z,w,d,h=4.1,broken=false){const q=group(architecture,x,0,z);mesh(q,new T.BoxGeometry(w,h,d,Math.max(1,Math.ceil(w/1.2)),Math.ceil(h/1.1),Math.max(1,Math.ceil(d/1.2))),weathered,0,h*.5,0);box(q,0,.18,0,w+.13,.36,d+.15,deep);if(!broken)box(q,0,h+.10,0,w+.16,.22,d+.18,edge);else{const n=Math.max(2,Math.floor(w/1.2));for(let i=0;i<n;i++){const xx=-w*.5+(i+.5)*w/n,hh=.16+random()*.55;box(q,xx,h+hh*.5,0,w/n*.86,hh,d*.88,i%2?obsidian:ashStone);}}for(let y=.95;y<h-.3;y+=1.1)box(q,0,y,d*.5+.012,w,.025,.025,deep);const c=blockCollision(x,z,w,d);c.h=h+.25;return q;}
 
  // Broad ash-stained ground surfaces and a handful of large cracked processional
  // stones establish scale; no evenly repeated tile grid covers the level.
- function floor(x,z,w,d,m=flooring){const g=new T.BoxGeometry(w,.22,d),a=g.attributes.position,n=g.attributes.normal,uv=g.attributes.uv;for(let i=0;i<a.count;i++){if(n.getY(i)>.8)uv.setXY(i,(a.getX(i)+x)*.12,(a.getZ(i)+z)*.12);}box(architecture,x,-.45,z,w+.8,.65,d+.8,rock);return mesh(architecture,g,m,x,-.12,z,false);}
+ function floor(x,z,w,d,m=flooring){const g=new T.BoxGeometry(w,.22,d,Math.ceil(w/1.7),1,Math.ceil(d/1.7)),a=g.attributes.position,n=g.attributes.normal,uv=g.attributes.uv;for(let i=0;i<a.count;i++){if(n.getY(i)>.8)uv.setXY(i,(a.getX(i)+x)*.12,(a.getZ(i)+z)*.12);}box(architecture,x,-.45,z,w+.8,.65,d+.8,rock);return mesh(architecture,g,m,x,-.12,z,false);}
  floor(0,15.5,9,13,flooring);floor(0,1.5,12,17);floor(-8.5,3.25,7,6.5);floor(0,-8,6.2,4,obsidian);floor(0,-21,23,26);
- for(let i=0;i<10;i++){const z=18-i*2.55,w=3.15+(i%3)*.21,d=2.1+(i%2)*.15,q=group(architecture,(i%2?-.17:.12),0,z);q.rotation.y=(i%2?1:-1)*.018;const stone=mesh(q,chamfer(w,d,.055,.14),i%3===1?weathered:ashStone,0,-.035,0,false);}
+ for(let row=0;row<10;row++)for(let col=0;col<3;col++){
+  const w=.83+random()*.22,d=1.65+random()*.32,x=(col-1)*1.03+(random()-.5)*.13,z=18-row*2.45+(col%2?-.12:.12),q=group(architecture,x,.003,z);
+  q.rotation.y=(random()-.5)*.09;
+  const ch=.08+random()*.10,s=new T.Shape();
+  s.moveTo(-w*.5+ch,-d*.5);s.lineTo(w*.5-.05,-d*.5+.035);s.lineTo(w*.5,-d*.5+ch);
+  s.lineTo(w*.5,d*.15);s.lineTo(w*.5-.055,d*.19);s.lineTo(w*.5,d*.23);
+  s.lineTo(w*.5-ch,d*.5);s.lineTo(-w*.5+.04,d*.5-.035);s.lineTo(-w*.5,d*.5-ch);s.lineTo(-w*.5,-d*.5+ch);s.closePath();
+  const g=new T.ExtrudeGeometry(s,{depth:.022,bevelEnabled:true,bevelSize:.008,bevelThickness:.006,bevelSegments:1,steps:1});g.rotateX(-PI/2);
+  mesh(q,g,paving,0,0,0,false);
+ }
  // Large, irregular fracture branches, with subtle bronze seams in the inner hall.
  for(const [x,z,yaw,length]of [[-2.7,14,.6,2.3],[2.2,10,-.5,2.9],[-3,4,.2,3.5],[2,-3,1.8,3.0],[-5,-14,.3,4.8],[3,-20,-.7,5.4],[-4,-26,.7,4.2],[4,-30,1.0,3.1]]){const q=group(architecture,x,.013,z);q.rotation.y=yaw;curve(q,[[-length*.5,0,0],[-length*.15,0,.13],[length*.16,0,-.14],[length*.5,0,.11]],.012,fracture,7,3);curve(q,[[length*.16,0,-.14],[length*.22,0,-.43],[length*.35,0,-.61]],.007,fracture,4,3);}
- function groundPatch(x,z,rx,rz,m=soil){const pts=[],count=11;for(let i=0;i<count;i++){const a=i/count*TAU,r=.72+random()*.28;pts.push(new T.Vector2(Math.cos(a)*rx*r,Math.sin(a)*rz*r));}const s=new T.Shape(pts),o=mesh(architecture,new T.ShapeGeometry(s),m,x,.015,z,false);o.rotation.x=-PI/2;return o;}
+ function groundPatch(x,z,rx,rz,m=soil){const pts=[],count=20,phase=random()*TAU;for(let i=0;i<count;i++){const a=i/count*TAU,r=.87+Math.sin(a*3+phase)*.075+Math.sin(a*5-phase)*.035;pts.push(new T.Vector2(Math.cos(a)*rx*r,Math.sin(a)*rz*r));}const s=new T.Shape(pts),g=new T.ShapeGeometry(s),p=g.attributes.position,uv=g.attributes.uv;for(let i=0;i<p.count;i++)uv.setXY(i,p.getX(i)/(rx*2)+.5,p.getY(i)/(rz*2)+.5);const o=mesh(architecture,g,m,x,.015,z,false);o.rotation.x=-PI/2;return o;}
 
  // I. The arrival: a collapsed portico, thick perimeter walls and a view back
  // over the ashen valley. The dominant axis leads directly to the sealed gate.
@@ -142,11 +156,40 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  blockCollision(0,-32.6,8.0,3.4,'raised shrine');
  const throne=group(architecture,0,1.1,-33.4);box(throne,0,.16,0,2.2,.32,1.6,deep);box(throne,0,.56,0,1.6,.46,1.3,obsidian);box(throne,0,1.7,-.47,1.6,2.4,.30,obsidian);for(const x of [-.95,.95]){box(throne,x,.90,.05,.32,1.5,1.6,weathered);cylinder(throne,x,1.85,-.47,.12,.7,bronze,5,0);}arch(throne,0,2.8,-.47,1.5,1.3,.22,.36,edge);box(throne,0,1.5,-.27,.035,1.55,.04,bronze);
 
+ // A single rose above the bell completes the processional axis. Restrained
+ // amber fragments interrupt the cold leaded glass; the fighting floor stays clear.
+ const rose=group(architecture,0,11.10,-33.25);
+ ring(rose,0,0,0,1.35,.085,edge,64);ring(rose,0,0,.04,1.22,.025,bronze,64);
+ ring(rose,0,0,.07,.25,.040,bronze,32);
+ const roseColors=['#638f9b','#466f83','#b39257'];
+ const roseGlass=roseColors.map(color=>{const material=mat(color,.18,.34);material.emissive.set(color).convertSRGBToLinear();material.emissiveIntensity=.30;material.side=T.DoubleSide;return material;});
+ const petalShape=new T.Shape();petalShape.moveTo(0,.27);petalShape.quadraticCurveTo(.34,.66,0,1.17);petalShape.quadraticCurveTo(-.34,.66,0,.27);
+ for(let i=0;i<8;i++){
+  const a=i/8*TAU,petal=mesh(rose,new T.ShapeGeometry(petalShape,12),roseGlass[i===2||i===5?2:i%2],0,0,.015,false);petal.rotation.z=a;
+  const lead=group(rose,0,0,.06);lead.rotation.z=a;
+  curve(lead,[[0,.27,0],[.145,.58,0],[.145,.84,0],[0,1.17,0],[-.145,.84,0],[-.145,.58,0],[0,.27,0]],.018,bronze,28,4);
+  beam(rose,[Math.sin(a)*.28,Math.cos(a)*.28,.07],[Math.sin(a)*1.22,Math.cos(a)*1.22,.07],.022,weathered,5);
+ }
+ mesh(rose,new T.CircleGeometry(.20,24),roseGlass[2],0,0,.02,false);
+ for(const side of [-1,1]){
+  // Narrow drip mouldings carry the eye down from the rose to the bell.
+  curve(architecture,[[side*1.65,12.6,-33.3],[side*1.93,11.6,-33.3],[side*2.22,10.8,-33.3]],.065,edge,12,6);
+ }
+
  // Sculptural landmarks have individual placement and readable silhouette.
  function mourner(x,z,s=1,headless=false,yaw=0){const q=group(architecture,x,0,z);q.scale.setScalar(s);q.rotation.y=yaw;box(q,0,.18,0,1.35,.36,1.35,deep);box(q,0,.45,0,1.14,.18,1.14,edge);const profile=[new T.Vector2(.48,.55),new T.Vector2(.45,.8),new T.Vector2(.29,1.65),new T.Vector2(.33,2.15),new T.Vector2(.24,2.43)];mesh(q,new T.LatheGeometry(profile,18),robe);for(let i=0;i<7;i++){const a=i/7*TAU;curve(q,[[Math.sin(a)*.46,.58,Math.cos(a)*.46],[Math.sin(a)*.31,1.5,Math.cos(a)*.31],[Math.sin(a)*.26,2.29,Math.cos(a)*.26]],.022,weathered,8,4);}if(!headless){ball(q,0,2.67,0,.23,.29,.22,bone);const hood=mesh(q,new T.SphereGeometry(.31,14,10,0,TAU,0,PI*.64),obsidian,0,2.78,-.04);hood.scale.y=1.1;ball(q,0,2.65,.20,.14,.17,.025,deep,10);}for(const side of [-1,1]){beam(q,[side*.28,2.12,0],[side*.36,1.75,.20],.085,robe);beam(q,[side*.36,1.75,.20],[side*.05,1.9,.40],.07,robe);}cylinder(q,0,1.82,.40,.11,.21,bronze,9,.16);return q;}
  mourner(-4.65,-5.6,1.05,false,.14);mourner(4.6,-5.6,1.05,true,-.14);mourner(-8.8,-30.6,1.52,false,.4);mourner(8.9,-30.2,1.52,true,-.4);
  // Headstones and collapsed architectural fragments belong at the boundaries.
- for(const [x,z,yaw]of [[-3.9,14.0,.1],[3.5,19.1,-.2],[-5.1,9.8,.15],[4.8,5.3,-.3],[-11.1,5.6,.6],[9.5,-18.5,-.8],[-10,-27.2,.2]]){const q=group(architecture,x,0,z);q.rotation.y=yaw;q.rotation.z=.06;box(q,0,.40,0,.48,.8,.15,weathered);ball(q,0,.81,0,.24,.14,.075,weathered,10);box(q,0,.52,.085,.04,.27,.025,bronze);box(q,0,.58,.085,.20,.04,.025,bronze);}
+ for(const [i,[x,z,yaw]]of [[-3.9,14.0,.1],[3.5,19.1,-.2],[-5.1,9.8,.15],[4.8,5.3,-.3],[-11.1,5.6,.6],[9.5,-18.5,-.8],[-10,-27.2,.2]].entries()){
+  const q=group(architecture,x,0,z);q.rotation.y=yaw;q.rotation.z=i%2?.055:-.045;
+  const s=new T.Shape();s.moveTo(-.25,.08);s.lineTo(.25,.08);s.lineTo(.25,.70);
+  if(i%3===1){s.quadraticCurveTo(.16,.83,0,.96);s.quadraticCurveTo(-.16,.83,-.25,.70);}else{s.bezierCurveTo(.25,1.04,-.25,1.04,-.25,.70);}s.closePath();
+  const geo=new T.ExtrudeGeometry(s,{depth:.12,bevelEnabled:true,bevelSize:.018,bevelThickness:.014,bevelSegments:1,steps:1,curveSegments:14});geo.translate(0,0,-.06);
+  mesh(q,geo,edge);box(q,0,.07,0,.60,.13,.31,weathered);
+  curve(q,[[-.19,.25,.082],[-.19,.68,.082],[0,.84,.082],[.19,.68,.082],[.19,.25,.082]],.009,obsidian,22,4);
+  box(q,0,.59,.086,.028,.23,.012,bronze);box(q,0,.63,.086,.15,.026,.012,bronze);
+  for(let line=0;line<3;line++)box(q,0,.37-line*.055,.086,.17-line*.022,.011,.010,obsidian,false);
+ }
  for(const [cx,cz,count,radius]of [[-5.5,10,15,1.0],[5.2,-4,19,1.1],[-10.8,-16,24,1.3],[10.7,-28,25,1.2],[-11.6,6,15,.7]])for(let i=0;i<count;i++){const a=random()*TAU,r=random()*radius,s=.10+random()*.26;const o=box(architecture,cx+Math.sin(a)*r,s*.35,cz+Math.cos(a)*r,s*1.9,s*.7,s,random()>.5?ashStone:obsidian);o.rotation.set(random()*.3,random()*TAU,random()*.3);}
  // A fallen sculpted head, half-buried shield and fractured column add sparse
  // close-up points of interest without occupying the line of combat.
@@ -223,9 +266,32 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  const echoMaterial=new T.MeshBasicMaterial({color:'#e4c394',transparent:true,opacity:0,side:T.DoubleSide,depthWrite:false});materials.push(echoMaterial);
  const bellEcho=mesh(life,new T.RingGeometry(.97,1,72),echoMaterial,bell.x,.035,bell.z,false);bellEcho.rotation.x=-PI/2;bellEcho.visible=false;
 
- // Two old hanging banners supply secondary motion and human scale.
- const cloth=mat('#4d3030');cloth.side=T.DoubleSide;
- for(const [x,z,h,yaw]of [[6.0,-3.0,5.0,-PI/2],[-11.6,-27,7.0,PI/2]]){const q=group(life,x,h,z);q.rotation.y=yaw;const geo=new T.PlaneGeometry(1.0,2.4,8,14),base=geo.attributes.position.array.slice();const o=mesh(q,geo,cloth,0,-1.1,0,false);beam(q,[-.62,.18,0],[.62,.18,0],.025,bronze,6);const a=geo.attributes.position;for(let i=0;i<a.count;i++)if(a.getY(i)<-.9)a.setY(i,a.getY(i)+Math.sin(a.getX(i)*17)*.09);cloths.push({mesh:o,base,phase:x});}
+ // Woven, embroidered funeral cloth supplies a human scale. The top row is
+ // pinned, the torn hem follows the wind, and folds retain their rest shape.
+ const textile=new Uint8Array(256*256*4);
+ const segmentDistance=(x,y,ax,ay,bx,by)=>{const dx=bx-ax,dy=by-ay,t=T.MathUtils.clamp(((x-ax)*dx+(y-ay)*dy)/(dx*dx+dy*dy),0,1);return Math.hypot(x-ax-dx*t,y-ay-dy*t);};
+ for(let yy=0;yy<256;yy++)for(let xx=0;xx<256;xx++){
+  const x=xx/255*2-1,y=yy/255,k=(yy*256+xx)*4;
+  let sigil=segmentDistance(x,y,0,.24,0,.78)<.013;
+  for(const side of [-1,1])for(let j=0;j<3;j++)if(segmentDistance(x,y,0,.36+j*.12,side*(.27-j*.045),.47+j*.12)<.013)sigil=true;
+  const border=Math.abs(Math.abs(x)-.84)<.012||Math.abs(y-.91)<.006;
+  const weave=(xx%2?1:-1)*2+(yy%3?0:3),fade=.81+noise(xx*.035,yy*.04)*.26;
+  const color=sigil||border?[173,145,94]:[98,48,44];
+  textile[k]=(color[0]+weave)*fade;textile[k+1]=(color[1]+weave)*fade;textile[k+2]=(color[2]+weave)*fade;textile[k+3]=255;
+ }
+ const cloth=mat('#ffffff',0,.94);cloth.side=T.DoubleSide;cloth.map=data(textile,true);cloth.bumpMap=bump;cloth.bumpScale=.009;
+ for(const [index,[x,z,h,yaw,w,height]]of [[5.94,3.4,5.3,-PI/2,1.25,2.8],[-11.55,-26.7,7.1,PI/2,1.5,3.3],[-3.78,-6.87,6.5,0,1.16,2.55],[3.78,-6.87,6.5,0,1.16,2.55]].entries()){
+  const q=group(life,x,h,z);q.rotation.y=yaw;const geo=new T.PlaneGeometry(w,height,10,18),p=geo.attributes.position;
+  for(let i=0;i<p.count;i++){
+   const px=p.getX(i),py=p.getY(i),free=(height*.5-py)/height;
+   p.setZ(i,Math.sin(px*15+index)*.030*free);
+   if(free>.87)p.setY(i,py+(.12+.09*Math.sin(px*21+index))*(free-.87)/.13);
+  }
+  geo.computeVertexNormals();const base=p.array.slice(),o=mesh(q,geo,cloth,0,-height*.5,0,false);o.name='funeral-banner-'+index;
+  beam(q,[-w*.5-.12,.025,0],[w*.5+.12,.025,0],.027,bronze,6);
+  for(const side of [-1,1])ball(q,side*(w*.5+.15),.025,0,.045,.045,.045,bronze,8);
+  cloths.push({mesh:o,base,phase:index*1.7,height});
+ }
 
  // Actual landscape meshes anchor the walls in a valley rather than a flat void.
  const terrainGeo=new T.PlaneGeometry(180,180,64,64);terrainGeo.rotateX(-PI/2);const pa=terrainGeo.attributes.position;
@@ -255,7 +321,7 @@ function create({THREE:T,scene,renderer,M,surfaces}){
     #include <tonemapping_fragment>
     #include <encodings_fragment>
    }`});materials.push(skyMaterial);
- const sky=mesh(life,new T.SphereGeometry(155,32,16),skyMaterial,0,0,-8,false);sky.renderOrder=-20;sky.frustumCulled=false;sky.receiveShadow=false;
+ const sky=mesh(life,new T.SphereGeometry(155,32,16),skyMaterial,0,0,-8,false);sky.renderOrder=10;sky.frustumCulled=false;sky.receiveShadow=false;
 
  // Sculpted low mist curls along walls and behind the gate, with soft alpha and
  // depth testing. The center of each encounter remains readable.
@@ -263,12 +329,45 @@ function create({THREE:T,scene,renderer,M,surfaces}){
   vertexShader:'varying vec2 uv0;varying vec3 world;void main(){uv0=uv;vec4 p=modelMatrix*vec4(position,1.);world=p.xyz;gl_Position=projectionMatrix*viewMatrix*p;}',
   fragmentShader:`precision mediump float;uniform float clock;varying vec2 uv0;varying vec3 world;float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1.,0.)),f.x),mix(h(i+vec2(0.,1.)),h(i+vec2(1.,1.)),f.x),f.y);}void main(){vec2 p=world.xz*.18+vec2(-clock*.045,clock*.013)+uv0*2.;float f=n(p)*.66+n(p*2.1+4.)*.34;vec2 q=(uv0-.5)*2.;float a=(1.-smoothstep(.12,1.,dot(q,q)))*smoothstep(.22,.70,f)*(1.-smoothstep(.22,.96,uv0.y))*.20;gl_FragColor=vec4(.24,.31,.34,a);}`});materials.push(mist);
  for(const [x,z,w,rot]of [[-5.4,4,11,PI/2],[5.4,1,10,PI/2],[-10.3,-21,17,PI/2],[10.4,-23,16,PI/2],[0,-32,18,0],[0,-9.5,5.5,0]]){const o=mesh(life,new T.PlaneGeometry(w,1.6),mist,x,.83,z,false);o.rotation.y=rot;o.renderOrder=2;}
+ // Two soft world-space light volumes hint at moonlight through the broken
+ // vault; they depth-test against masonry and never cover the combat center.
+ const shaftMaterial=new T.ShaderMaterial({uniforms:atmosphereUniforms,transparent:true,depthWrite:false,side:T.DoubleSide,
+  vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+  fragmentShader:`precision mediump float;varying vec2 vUv;uniform float clock;uniform float ending;
+   void main(){float edge=pow(max(0.,1.-abs(vUv.x*2.-1.)),2.6);
+    float endFade=smoothstep(0.,.17,vUv.y)*(1.-smoothstep(.70,1.,vUv.y));
+    float grain=.86+.14*sin(vUv.y*31.+vUv.x*13.+clock*.13);
+    vec3 color=mix(vec3(.32,.46,.58),vec3(.61,.50,.34),ending*.5);
+    gl_FragColor=vec4(color,edge*endFade*grain*.055);}`});materials.push(shaftMaterial);
+ for(const [index,[top,bottom,width]]of [[[-5.8,12.6,-25.0],[2.6,.22,-28.4],3.5],[[5.9,8.6,7.7],[2.1,.22,4.8],2.1]].entries()){
+  const a=new T.Vector3(...top),b=new T.Vector3(...bottom),delta=a.clone().sub(b),center=a.clone().add(b).multiplyScalar(.5);
+  const shaft=mesh(life,new T.PlaneGeometry(width,delta.length()),shaftMaterial,center.x,center.y,center.z,false);
+  shaft.name='vault-moonlight-'+index;shaft.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),delta.normalize());shaft.receiveShadow=false;shaft.renderOrder=1;
+ }
  const ashGeo=new T.BufferGeometry(),ash=new Float32Array(180*3);for(let i=0;i<180;i++){ash[i*3]=(random()-.5)*29;ash[i*3+1]=.2+random()*11;ash[i*3+2]=-32+random()*52;}ashGeo.setAttribute('position',new T.BufferAttribute(ash,3));const ashMaterial=new T.PointsMaterial({color:'#9caeae',size:.028,transparent:true,opacity:.28,depthWrite:false});materials.push(ashMaterial);life.add(new T.Points(ashGeo,ashMaterial));
 
  // Rain-polished shallow pools use physical environment reflections, not a painted glow.
- const wet=new T.MeshPhysicalMaterial({color:new T.Color('#667d83').convertSRGBToLinear(),metalness:.12,roughness:.16,clearcoat:1,clearcoatRoughness:.08,transparent:true,opacity:.48,depthWrite:false});materials.push(wet);
- if(surfaces){wet.normalMap=surfaces.floor.normal;wet.normalScale=new T.Vector2(.07,.07);}
+ const waterEdge=new Uint8Array(256*256*4);
+ for(let y=0;y<256;y++)for(let x=0;x<256;x++){
+  const u=x/255*2-1,v=y/255*2-1,r=Math.hypot(u,v),shore=noise(x*.047,y*.047)*.075;
+  const a=T.MathUtils.clamp((.91-r+shore)/.24,0,1),i=(y*256+x)*4;
+  waterEdge[i]=waterEdge[i+1]=waterEdge[i+2]=Math.round(a*a*(3-2*a)*255);waterEdge[i+3]=255;
+ }
+ const wet=new T.MeshPhysicalMaterial({color:new T.Color('#71868b').convertSRGBToLinear(),metalness:.09,roughness:.15,clearcoat:1,clearcoatRoughness:.08,transparent:true,opacity:.54,depthWrite:false,alphaMap:data(waterEdge)});materials.push(wet);
+ wet.alphaMap.wrapS=wet.alphaMap.wrapT=T.ClampToEdgeWrapping;
+ if(surfaces){wet.normalMap=surfaces.floor.normal;wet.normalScale=new T.Vector2(.055,.055);}
  for(const [x,z,rx,rz]of [[-2.1,16,.85,1.9],[2.9,12,1.1,1.7],[-3.6,6,.6,1.2],[3.7,1,1.15,2.1],[-2.8,-3,.6,.9],[-4,-16,1.0,1.8],[5,-22,1.6,1.1],[-5,-27,1.1,1.9]]){const pool=groundPatch(x,z,rx,rz,wet);pool.position.y=.026;}
+ // Palm-sized fragments collect against the footings. One instanced draw gives
+ // the path an eroded edge, without adding hidden collision to the walking line.
+ const gritGeo=new T.IcosahedronGeometry(1,0),gritColor=new Float32Array(gritGeo.attributes.position.count*3);gritColor.fill(1);gritGeo.setAttribute('color',new T.BufferAttribute(gritColor,3));
+ const grit=new T.InstancedMesh(gritGeo,rock,144),gritDummy=new T.Object3D(),gritTint=new T.Color();grit.name='boundary-stone-fragments';grit.receiveShadow=true;grit.castShadow=false;
+ const gritPockets=[[-4.02,15.0],[4.05,17.5],[-5.4,7.7],[5.3,2.3],[-11.55,4.8],[10.55,-17.0],[-10.65,-25.7],[10.6,-29.0]];
+ for(let i=0;i<144;i++){
+  const [x,z]=gritPockets[i%gritPockets.length],angle=random()*TAU,radius=Math.sqrt(random());
+  gritDummy.position.set(x+Math.sin(angle)*radius*.45,.025+random()*.018,z+Math.cos(angle)*radius*1.6);
+  gritDummy.rotation.set(random()*.5,random()*TAU,random()*.5);gritDummy.scale.set(.045+random()*.095,.025+random()*.028,.045+random()*.085);gritDummy.updateMatrix();grit.setMatrixAt(i,gritDummy.matrix);
+  gritTint.setRGB(.84+random()*.16,.88+random()*.12,.89+random()*.11);grit.setColorAt(i,gritTint);
+ }life.add(grit);
  const leafMaterial=mat('#455743',0,.88),leafShape=new T.Shape();leafShape.moveTo(0,0);leafShape.quadraticCurveTo(.09,.11,0,.24);leafShape.quadraticCurveTo(-.09,.11,0,0);const leafGeo=new T.ShapeGeometry(leafShape,3);leafMaterial.side=T.DoubleSide;
  const ivy=new T.InstancedMesh(leafGeo,leafMaterial,520),leafDummy=new T.Object3D();ivy.castShadow=false;ivy.receiveShadow=true;
  for(let i=0;i<520;i++){const side=i<300?1:-1,wallX=side>0?5.94:-5.94,z=(i<300?7:-2)+Math.sin(i*.24)*1.6+(random()-.5)*.85,y=.2+(i%90)/90*4.2;
@@ -277,9 +376,35 @@ function create({THREE:T,scene,renderer,M,surfaces}){
  // Static surfaces collapse into a small number of GPU submissions while
  // moving doors, flames, fabric and mist retain their own geometry.
  architecture.updateMatrixWorld(true);const buckets=new Map(),old=[];
- architecture.traverse(o=>{if(!o.isMesh)return;const g=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();g.applyMatrix4(o.matrixWorld);if(o.material.userData.worldUV){const p=g.attributes.position,n=g.attributes.normal,uv=g.attributes.uv,s=o.material.userData.worldUV;if(uv)for(let i=0;i<p.count;i++){const nx=Math.abs(n.getX(i)),ny=Math.abs(n.getY(i)),nz=Math.abs(n.getZ(i));uv.setXY(i,(ny>nx&&ny>nz?p.getX(i):nx>nz?p.getZ(i):p.getX(i))*s,(ny>nx&&ny>nz?p.getZ(i):p.getY(i))*s);}}const key=o.material.uuid+(o.castShadow?'1':'0');if(!buckets.has(key))buckets.set(key,{material:o.material,cast:o.castShadow,p:[],n:[],uv:[]});const b=buckets.get(key);b.p.push(g.attributes.position.array);b.n.push(g.attributes.normal.array);b.uv.push(g.attributes.uv?g.attributes.uv.array:new Float32Array(g.attributes.position.count*2));old.push(o);g.dispose();});
+ architecture.traverse(o=>{
+  if(!o.isMesh)return;
+  const g=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();g.applyMatrix4(o.matrixWorld);
+  const p=g.attributes.position,n=g.attributes.normal,uv=g.attributes.uv;
+  if(o.material.userData.worldUV&&uv){
+   const scale=o.material.userData.worldUV;
+   for(let i=0;i<p.count;i++){
+    const nx=Math.abs(n.getX(i)),ny=Math.abs(n.getY(i)),nz=Math.abs(n.getZ(i));
+    uv.setXY(i,(ny>nx&&ny>nz?p.getX(i):nx>nz?p.getZ(i):p.getX(i))*scale,(ny>nx&&ny>nz?p.getZ(i):p.getY(i))*scale);
+   }
+  }
+  const key=o.material.uuid+(o.castShadow?'1':'0');
+  if(!buckets.has(key))buckets.set(key,{material:o.material,cast:o.castShadow,p:[],n:[],uv:[],color:[]});
+  const b=buckets.get(key);b.p.push(p.array);b.n.push(n.array);b.uv.push(uv?uv.array:new Float32Array(p.count*2));
+  if(o.material.vertexColors){
+   const colors=new Float32Array(p.count*3);
+   for(let i=0;i<p.count;i++){
+    const x=p.getX(i),y=p.getY(i),z=p.getZ(i),up=Math.abs(n.getY(i));
+    const mineral=noise(x*.43+z*.17,y*.27+z*.31),streak=noise(x*.91+z*.73,y*.085+17);
+    const moisture=Math.exp(-Math.max(0,y)*.85)*(up>.7?.07:.16);
+    const shade=.91+mineral*.16-moisture-Math.max(0,.46-streak)*.27;
+    colors[i*3]=shade*.98;colors[i*3+1]=shade;colors[i*3+2]=shade*1.015;
+   }
+   b.color.push(colors);
+  }
+  old.push(o);g.dispose();
+ });
  const concat=arrays=>{const a=new Float32Array(arrays.reduce((n,b)=>n+b.length,0));let at=0;for(const b of arrays){a.set(b,at);at+=b.length;}return a;};
- let staticTriangles=0;for(const b of buckets.values()){const g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(concat(b.p),3));g.setAttribute('normal',new T.BufferAttribute(concat(b.n),3));g.setAttribute('uv',new T.BufferAttribute(concat(b.uv),2));g.computeBoundingSphere();staticTriangles+=g.attributes.position.count/3;mesh(root,g,b.material,0,0,0,b.cast);}
+ let staticTriangles=0;for(const b of buckets.values()){const g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(concat(b.p),3));g.setAttribute('normal',new T.BufferAttribute(concat(b.n),3));g.setAttribute('uv',new T.BufferAttribute(concat(b.uv),2));if(b.color.length)g.setAttribute('color',new T.BufferAttribute(concat(b.color),3));g.computeBoundingSphere();staticTriangles+=g.attributes.position.count/3;mesh(root,g,b.material,0,0,0,b.cast);}
  for(const o of old){o.parent.remove(o);o.geometry.dispose();}root.remove(architecture);
  const stats={staticDraws:buckets.size,staticTriangles,rooms:5,discoveries:discoveries.length};
  function updateLandmarks(dt,t){
@@ -308,7 +433,23 @@ function create({THREE:T,scene,renderer,M,surfaces}){
   setReducedMotion(value){reducedMotion=!!value;},
   get ending(){return endingAmount;},
   setGate(open){gateTarget=open?1:0;const i=obstacles.indexOf(gateBarrier);if(open&&i>=0)obstacles.splice(i,1);else if(!open&&i<0)obstacles.push(gateBarrier);},
-  update(dt,t){updateLandmarks(dt,t);mistUniforms.clock.value=reducedMotion?0:t;gateAmount=lerp(gateAmount,gateTarget,1-Math.exp(-1.9*dt));doorLeft.rotation.y=gateAmount*PI*.56;doorRight.rotation.y=-gateAmount*PI*.56;for(const f of fire){f.mesh.scale.y=f.scale.y*(.86+Math.sin(t*7.4+f.phase)*.18);f.mesh.scale.x=f.scale.x*(.94+Math.sin(t*5.3+f.phase)*.1);f.mesh.rotation.z=Math.sin(t*3.4+f.phase)*.09;}for(const l of lights)l.light.intensity=l.base*(.96+Math.sin(t*5+l.phase)*.045);for(const b of cloths){const p=b.mesh.geometry.attributes.position;for(let i=0;i<p.count;i++){const x=b.base[i*3],y=b.base[i*3+1],u=(1.2-y)/2.4;p.setZ(i,Math.sin(t*1.7+x*2+y*1.8+b.phase)*.11*u);};p.needsUpdate=true;b.mesh.geometry.computeVertexNormals();}const a=ashGeo.attributes.position;for(let i=0;i<a.count;i++){a.setY(i,(a.getY(i)+dt*.055)%11);a.setX(i,a.getX(i)+Math.sin(t*.31+i)*dt*.014);}a.needsUpdate=true;},
+  update(dt,t){
+   updateLandmarks(dt,t);const windTime=reducedMotion?0:t;
+   mistUniforms.clock.value=windTime;atmosphereUniforms.clock.value=windTime;atmosphereUniforms.ending.value=endingAmount;
+   gateAmount=lerp(gateAmount,gateTarget,1-Math.exp(-1.9*dt));doorLeft.rotation.y=gateAmount*PI*.56;doorRight.rotation.y=-gateAmount*PI*.56;
+   for(const f of fire){f.mesh.scale.y=f.scale.y*(.86+Math.sin(windTime*7.4+f.phase)*.18);f.mesh.scale.x=f.scale.x*(.94+Math.sin(windTime*5.3+f.phase)*.1);f.mesh.rotation.z=Math.sin(windTime*3.4+f.phase)*.09;}
+   for(const l of lights)l.light.intensity=l.base*(.96+Math.sin(windTime*5+l.phase)*.045);
+   for(const b of cloths){
+    const p=b.mesh.geometry.attributes.position;
+    for(let i=0;i<p.count;i++){
+     const x=b.base[i*3],y=b.base[i*3+1],z=b.base[i*3+2],free=Math.abs(b.height*.5-y)<.0001?0:T.MathUtils.clamp((b.height*.5-y)/b.height,0,1);
+     const wave=Math.sin(windTime*1.55+x*2.8-y*1.6+b.phase),gust=.075+Math.sin(windTime*.43+b.phase)*.025;
+     p.setXYZ(i,x+wave*.014*free,y+Math.cos(windTime*1.3+x*4+b.phase)*.018*free,z+wave*gust*free*free+Math.sin(windTime*2.5-y*3.4)*.022*free);
+    }
+    p.needsUpdate=true;b.mesh.geometry.computeVertexNormals();
+   }
+   if(!reducedMotion){const a=ashGeo.attributes.position;for(let i=0;i<a.count;i++){a.setY(i,(a.getY(i)+dt*.055)%11);a.setX(i,a.getX(i)+Math.sin(t*.31+i)*dt*.014);}a.needsUpdate=true;}
+  },
   dispose(){const seen=new Set();root.traverse(o=>{if(o.geometry&&!seen.has(o.geometry)){seen.add(o.geometry);o.geometry.dispose();}});for(const m of materials)m.dispose();for(const t of textures)t.dispose();scene.remove(root);}
  };
 }

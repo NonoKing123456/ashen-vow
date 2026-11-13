@@ -79,16 +79,39 @@ function createKnight({THREE:T,scene,M={},isBoss=false,variant=''}){
   }
   let shield=includedShield;
   if(!boss&&!shield){shield=slot(rig.leftHand||rig.leftFore,'left_hand_shield');const sg=new T.SphereGeometry(.235,16,8,0,Math.PI*2,0,Math.PI*.5);sg.rotateX(Math.PI/2);sg.scale(1,1.18,.28);const disk=new T.Mesh(sg,leatherMat);disk.castShadow=true;shield.add(disk);const rim=new T.Mesh(new T.TorusGeometry(.235,.009,5,28),hiltMat);rim.scale.y=1.18;shield.add(rim);const bossing=new T.Mesh(new T.ConeGeometry(.052,.055,8),edgeMat);bossing.rotation.x=Math.PI/2;bossing.position.z=.04;shield.add(bossing);}
-  let cape=null;
-  // The imported silhouette gets a restrained ragged mantle with cloth inertia.
-  // It follows the animated spine and leaves leg and torso anatomy readable.
-  if(boss){
-  const capeAnchor=slot(rig.chest||rig.spine,'cloth_attachment'),cg=new T.PlaneGeometry(boss?.78:.64,boss?1.43:1.18,10,14),cp=cg.attributes.position;
-  for(let i=0;i<cp.count;i++){const x=cp.getX(i),y=cp.getY(i),fall=(.74-y)/1.5;cp.setX(i,x*(.38+fall*.70)-.045*fall);if(y<-(boss?.62:.50))cp.setY(i,y-[0,.03,.10,.02,.07,.14,.04,.025,.11,.06,0][i%11]);cp.setZ(i,-.015-fall*.09+Math.sin(x*21)*fall*.018);}
-  cg.computeVertexNormals();const clothMat=basicMat(boss?'#312a29':sentinel?'#38443f':'#5d302c',0,.98);clothMat.side=T.DoubleSide;cape=new T.Mesh(cg,clothMat);cape.position.set(0,-.38,-.12);cape.castShadow=true;cape.receiveShadow=true;cape.userData.restPositions=new Float32Array(cp.array);capeAnchor.add(cape);
-  // Woven relief at millimeter scale; no texture replaces geometry or skinning.
-  const clothData=new Uint8Array(64*64*4);for(let y=0;y<64;y++)for(let x=0;x<64;x++){const n=(y*64+x)*4,value=115+((x+y)%3===0?24:0)+(x%2?7:-7);clothData[n]=clothData[n+1]=clothData[n+2]=value;clothData[n+3]=255;}const clothTex=new T.DataTexture(clothData,64,64,T.RGBAFormat);clothTex.wrapS=clothTex.wrapT=T.RepeatWrapping;clothTex.repeat.set(5,7);clothTex.needsUpdate=true;clothMat.bumpMap=clothTex;clothMat.bumpScale=.0025;
+  // A tailored mantle gives each role its own silhouette. Shoulder vertices are
+  // pinned, with the folds and worn hem carried by the animator's cloth layer.
+  const capeAnchor=slot(rig.chest||rig.spine,'cloth_attachment'),clothWidth=boss?.88:sentinel?.66:.76,clothHeight=boss?1.13:sentinel?.83:.93;
+  const clothColumns=18,clothRows=24,cg=new T.PlaneGeometry(clothWidth,clothHeight,clothColumns,clothRows),cp=cg.attributes.position,clothFall=new Float32Array(cp.count),clothColors=new Float32Array(cp.count*3);
+  for(let i=0;i<cp.count;i++){
+    const x=cp.getX(i),y=cp.getY(i),fall=Math.floor(i/(clothColumns+1))/clothRows,edge=Math.abs(x)/(clothWidth*.5),pin=Math.max(0,1-fall*5);
+    const pleat=Math.cos(x/clothWidth*Math.PI*7+fall*.62)*(.042+.038*fall)*Math.sin(fall*Math.PI*.5);
+    const hem=Math.pow(Math.max(0,(fall-.61)/.39),2),notch=.20*Math.exp(-Math.pow(x/(clothWidth*.14),2)),sideLift=.095*Math.pow(edge,4),fray=.018*(.5+.5*Math.sin(x*67))+Math.max(0,-x)*.08;
+    cp.setX(i,x*(.44+fall*.35+Math.sin(fall*Math.PI)*.12)-.018*fall*fall);
+    cp.setY(i,y-.05*Math.pow(edge,1.6)*pin+hem*(notch+sideLift-fray));
+    cp.setZ(i,-.055-fall*.10-.035*(1-edge*edge)*pin+pleat);
+    clothFall[i]=fall;
+    const shade=.86+.12*Math.cos(x/clothWidth*Math.PI*7+fall*.62),wear=Math.max(0,(fall-.78)/.22)*.045;
+    clothColors.set([shade+wear,shade*.98+wear*.6,shade*.96],i*3);
   }
+  cg.setAttribute('color',new T.Float32BufferAttribute(clothColors,3));cg.computeVertexNormals();const clothMat=basicMat(boss?'#3e302e':sentinel?'#344b46':'#783d36',0,.91);clothMat.side=T.DoubleSide;clothMat.vertexColors=true;
+  const cape=new T.Mesh(cg,clothMat);cape.name=boss?'Warden / weathered oath mantle':sentinel?'Vigil / green watch mantle':'Exile / crimson oath mantle';cape.position.set(0,boss?-.43:-.40,-.16);cape.castShadow=true;cape.receiveShadow=true;
+  cape.userData.restPositions=new Float32Array(cp.array);cape.userData.fallWeights=clothFall;cape.userData.height=clothHeight;cape.userData.width=clothWidth;capeAnchor.add(cape);
+  // The small locally generated weave also carries a faded stitched border and
+  // oath mark. Its UVs deform with the cloth rather than sliding over the body.
+  const clothSize=128,clothData=new Uint8Array(clothSize*clothSize*4),reliefData=new Uint8Array(clothSize*clothSize*4);
+  for(let y=0;y<clothSize;y++)for(let x=0;x<clothSize;x++){
+    const n=(y*clothSize+x)*4,u=x/(clothSize-1),v=y/(clothSize-1),edge=Math.min(u,1-u,v,1-v);
+    const wear=.9+Math.sin(x*1.7+y*.91)*.025+Math.sin(x*.17-y*.21)*.04;
+    const border=edge>.036&&edge<.054,stitch=border&&((x+y)%5<3);
+    const sx=(u-.5)*2,sy=(v-.53)*2,mark=(Math.abs(sx)<.026&&sy>-.32&&sy<.34)||(Math.abs(sy+.11)<.022&&Math.abs(sx)<.21)||(Math.abs(Math.abs(sx)+Math.abs(sy-.23)-.115)<.02&&sy>.11);
+    const faded=mark&&Math.sin(x*.83+y*.53)>-.62;
+    const value=Math.round((stitch?242:faded?221:202)*wear),weave=125+(x%2?9:-9)+(y%2?6:-6);
+    clothData[n]=value;clothData[n+1]=stitch||faded?Math.round(value*.84):value;clothData[n+2]=stitch||faded?Math.round(value*.64):value;clothData[n+3]=255;
+    reliefData[n]=reliefData[n+1]=reliefData[n+2]=weave+(border?12:0);reliefData[n+3]=255;
+  }
+  const clothTex=new T.DataTexture(clothData,clothSize,clothSize,T.RGBAFormat);clothTex.encoding=T.sRGBEncoding;clothTex.magFilter=T.LinearFilter;clothTex.minFilter=T.LinearMipmapLinearFilter;clothTex.generateMipmaps=true;clothTex.needsUpdate=true;clothMat.map=clothTex;
+  const weaveTex=new T.DataTexture(reliefData,clothSize,clothSize,T.RGBAFormat);weaveTex.wrapS=weaveTex.wrapT=T.RepeatWrapping;weaveTex.repeat.set(3,5);weaveTex.magFilter=T.LinearFilter;weaveTex.minFilter=T.LinearMipmapLinearFilter;weaveTex.generateMipmaps=true;weaveTex.needsUpdate=true;clothMat.bumpMap=weaveTex;clothMat.bumpScale=.0018;
   const gait={};for(const [key,value]of Object.entries(template.gait))gait[key]={...value,distance:value.distance*normalization};
   const mixer=new T.AnimationMixer(visual),actor={root,pivot,model,visual,body,neck,head,arms,legs,weapon,shield,cape,rig,mixer,clips:template.clips,gait,materials:actorMaterials,isBoss:boss,variant,scale:root.scale.x,walk:0,blend:0,hit:0,_clothFrame:0,source:template.url};
   // Sockets are children of the animated pivot. Inverting the gameplay root

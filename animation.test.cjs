@@ -35,3 +35,20 @@ test('a completed roll can immediately enter a sword attack without a spinning r
 test('stagger and death settle the weighted mesh on the floor',()=>{
  for(const state of ['stagger','dead']){idle();for(let i=0;i<=72;i++)actor.animate({state,dead:state==='dead',time:i/60,dt:1/60,speed:0});const bounds=actualBounds();assert.ok(bounds.min>-.035,'a fallen body penetrates the ground');assert.ok(bounds.min<.06,'a fallen body hovers above the ground');if(state==='dead')assert.ok(bounds.max<.8,'death should finish lying down');}
 });
+test('a tailored cloth mantle keeps its shoulder pins during running, turning and rolling',()=>{
+ idle();assert.ok(actor.cape,'the player should have a finished cloth silhouette');
+ const p=actor.cape.geometry.attributes.position,rest=actor.cape.userData.restPositions,weights=actor.cape.userData.fallWeights,pins=[];
+ for(let i=0;i<p.count;i++)if(weights[i]===0)pins.push(i);assert.ok(pins.length>10,'the shoulder row needs fixed attachment points');
+ const root=actor.root.position.clone(),move=C.getMove('roll');
+ for(let frame=0;frame<120;frame++){
+  const roll=frame>=60&&frame<100;
+  actor.animate({state:roll?'roll':'idle',attack:roll?move:null,time:roll?(frame-60)/39*move.total:frame/60,t:frame/60,dt:1/60,speed:frame<50?5:0,yawRate:frame<50?3.4:0,rollDir:new T.Vector3(1,0,0),moveX:5,moveZ:0});
+  assert.ok(actor.root.position.equals(root),'cloth must not pull the gameplay root');
+  for(const i of pins)for(let axis=0;axis<3;axis++)assert.ok(Math.abs(p.array[i*3+axis]-rest[i*3+axis])<1e-5,'the mantle detached from its shoulders');
+  assert.ok([...p.array].every(Number.isFinite),'cloth contains invalid positions');
+ }
+});
+test('rolling recovery absorbs its landing without lingering floor penetration',()=>{
+ idle();const move=C.getMove('roll');for(let i=0;i<=60;i++)actor.animate({state:'roll',attack:move,time:i/60*move.total,dt:move.total/60,rollDir:new T.Vector3(0,0,1)});
+ for(let i=0;i<18;i++){actor.animate({state:'idle',time:i/60,dt:1/60,speed:0});const bounds=actualBounds();assert.ok(bounds.min>-.035,'a landing foot crossed the floor: '+bounds.min);assert.ok(bounds.min<.075,'landing held the character above the floor');}
+});

@@ -34,8 +34,8 @@ test('pausing at zero simulation time ducks ongoing tails and prevents gameplay 
  q.sound.play('hit');assert.equal(q.sources().length,before);q.sound.play('relic');assert.ok(q.sources().length>before);
  q.sound.update(0,{paused:false});assert.equal(fxOutput.gain.value,1);q.context.currentTime=1;q.sound.play('hit');assert.ok(q.sources().length>before);
 });
-test('discoveries, relic attunement and final bell have distinct playable voices without repeated frame spam',async()=>{
+test('discoveries, cinematic cues and final bell have playable voices without repeated frame spam',async()=>{
  const q=harness();await q.sound.unlock();
- for(const name of ['memory','relic','bell']){const before=q.sources().length;q.context.currentTime+=3;q.sound.play(name);const count=q.sources().length;assert.ok(count>before,name);q.sound.play(name);assert.equal(q.sources().length,count,name+' is debounced')}
+ for(const name of ['memory','relic','bell','arrival','location']){const before=q.sources().length;q.context.currentTime+=3;q.sound.play(name);const count=q.sources().length;assert.ok(count>before,name);q.sound.play(name);assert.equal(q.sources().length,count,name+' is debounced')}
  q.sound.setMix({master:100,music:-1,effects:NaN});assert.equal(q.sound.getMix().master,1);assert.equal(q.sound.getMix().music,0);assert.equal(q.sound.getMix().effects,1);
 });

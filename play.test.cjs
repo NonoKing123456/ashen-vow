@@ -5,15 +5,15 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 // Controller integration uses real THREE transforms, level bounds and blade
 // collision, with a small deterministic articulated sword fixture in place of
 // network-loaded GLB art. It verifies rules/state, not the exported animation.
-async function boot(){
+async function boot(options={}){
  const T={...require('./vendor/three.min.js')},elements=new Map(),listeners={},storage=new Map();
  const element=id=>{if(elements.has(id))return elements.get(id);const e={id,style:{},dataset:{},hidden:true,events:{},focus(){},addEventListener(t,f){this.events[t]=f},setPointerCapture(){},getBoundingClientRect(){return {left:0,top:0,width:100,height:100}}};elements.set(id,e);return e;};
  let callbacks,updates,now=1000,lastMemory=null,lastShrine=null,lastJournal=null;
  const scene=new T.Scene(),camera=new T.PerspectiveCamera(51,16/9,.1,200),renderer={domElement:element('game'),capabilities:{getMaxAnisotropy:()=>1}};
  T.Raycaster=class{set(){}intersectObjects(){return []}};
  const noop=()=>{};
- const ui={getSettings:()=>({audio:false,quality:'medium'}),isModalOpen:()=>false,update:v=>updates=v};
- for(const name of ['setLoading','setCheckpoint','setStarted','chapter','updateStep','setPaused','notify','damage','showDamage','setContext','setLock','result','hideHelp'])ui[name]=noop;
+ const ui={getSettings:()=>({audio:false,quality:'medium',...options.settings}),isModalOpen:()=>false,update:v=>updates=v};
+ for(const name of ['setLoading','setCheckpoint','setStarted','chapter','updateStep','setPaused','notify','damage','showDamage','setContext','setLock','result','hideHelp','setCinematic','location'])ui[name]=noop;
  ui.showMemory=e=>lastMemory=e;ui.showShrine=e=>lastShrine=e;ui.showJournal=e=>lastJournal=e;
  const levelBounds=[{x:0,z:15.5,w:9,d:13},{x:0,z:1.5,w:12,d:17},{x:-8.5,z:3.25,w:7,d:6.5},{x:0,z:-8,w:6.2,d:4},{x:0,z:-21,w:23,d:26}];
  const level={root:new T.Group(),bounds:levelBounds,obstacles:[],spawn:{x:0,z:18},bossSpawn:{x:0,z:-25},patrols:[{x:-1.8,z:8},{x:2.2,z:-2}],checkpoints:[{x:-9,z:3,kind:'checkpoint',radius:1.8}],discoveries:[{id:'arrival',name:'破盾',x:2.8,z:16.7,radius:1.7,kind:'memory'},{id:'chapel',name:'祷书',x:-8.3,z:5.2,radius:1.7,kind:'memory'},{id:'warden',name:'空冠',x:7.4,z:-19.8,radius:1.7,kind:'memory'}],bell:{x:0,z:-29.5,radius:2,kind:'bell'},setDiscovery:noop,setBossDefeated:noop,ringBell:()=>true,setGate:noop,update:noop};scene.add(level.root);
@@ -22,11 +22,11 @@ async function boot(){
   AshenCharacters:{load:async()=>{},createKnight(){const root=new T.Group(),blade=new T.Group();root.add(blade);scene.add(root);return {root,weapon:{group:blade,base:new T.Vector3(0,0,.20),tip:new T.Vector3(0,0,2.05)},animate(o){blade.position.set(.12,1.05,0);let yaw=0;if(o.attack&&o.state==='attack'){const pose=ctx.AshenCombat.samplePose(o.attack,o.time);yaw=(pose.localStrike-.5)*1.0;this.weapon.tip.z=o.attack.reach;}blade.rotation.y=yaw;root.updateMatrixWorld(true);},setHit:noop};}}
  };
  ctx.location={hostname:'localhost'};ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);
- for(const file of ['feel.js','journey.js','tactics.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8'),ctx);
- const source=fs.readFileSync(path.join(__dirname,'game.js'),'utf8').replace(/\}\)\(\);\s*$/,'globalThis.qa={player,enemies,boss,level,camera,start,retry,frame,updatePlayer,damage,change,resolveHits,journey,updateContext,interact,selectRelic,get flags(){return {dead,won,bossDefeated,paused,checkpoint,gateOpen,locked,time};}};})();');
+ for(const file of ['feel.js','journey.js','tactics.js',...(options.cinematics?['director.js','impact.js']:[])])vm.runInContext(fs.readFileSync(path.join(__dirname,file),'utf8'),ctx);
+ const source=fs.readFileSync(path.join(__dirname,'game.js'),'utf8').replace(/\}\)\(\);\s*$/,'globalThis.qa={player,enemies,boss,level,camera,start,retry,frame,updatePlayer,damage,change,resolveHits,journey,updateContext,interact,selectRelic,get flags(){return {dead,won,bossDefeated,paused,checkpoint,gateOpen,locked,time,directing:!!director?.active};}};})();');
  await vm.runInContext(source,ctx);const q=ctx.qa;
  q.press=(code)=>listeners.keydown({code,repeat:false,preventDefault:noop});q.release=(code)=>listeners.keyup({code});q.tick=(n=1)=>{for(let i=0;i<n;i++){now+=1000/60;q.frame(now)}};
- q.startPublic=(resume=false)=>callbacks.onStart({continue:resume});q.ui=()=>updates;q.callbacks=()=>callbacks;q.memory=()=>lastMemory;q.shrine=()=>lastShrine;q.journal=()=>lastJournal;q.storage=storage;q.mouseMove=(x,y)=>element('game').events.pointermove({clientX:x,clientY:y,pointerType:'mouse'});q.tick();return q;
+ q.startPublic=(resume=false)=>callbacks.onStart({continue:resume});q.ui=()=>updates;q.callbacks=()=>callbacks;q.memory=()=>lastMemory;q.shrine=()=>lastShrine;q.journal=()=>lastJournal;q.storage=storage;q.mouseMove=(x,y)=>element('game').events.pointermove({clientX:x,clientY:y,pointerType:'mouse'});q.pointerLock=active=>{ctx.document.pointerLockElement=active?element('game'):null;listeners['document:pointerlockchange']()};q.blur=()=>listeners.blur();q.tick();return q;
 }
 
 test('controller runs real swept blade damage and does not damage targets during anticipation',async()=>{
@@ -144,4 +144,35 @@ test('pausing freezes the earned roll-counter window until the player resumes',a
 
 test('mouse look rotates the camera without a held button and stops while paused',async()=>{
  const q=await boot();q.startPublic();q.tick(40);const before=q.camera.position.clone();q.mouseMove(200,200);q.mouseMove(320,240);q.tick(40);assert.ok(q.camera.position.distanceTo(before)>.4);tap(q,'Escape');const paused=q.camera.position.clone();q.mouseMove(500,300);q.tick(40);assert.ok(q.camera.position.distanceTo(paused)<.08);
+});
+
+
+test('real direction integration freezes arrival combat and consumes the skip press without attacking',async()=>{
+ const q=await boot({cinematics:true});q.startPublic();const start={x:q.player.x,z:q.player.z};
+ q.press('KeyW');q.tick(90);assert.equal(q.flags.directing,true);assert.equal(q.journey.snapshot().time,0);
+ assert.equal(q.player.x,start.x);assert.equal(q.player.z,start.z);assert.equal(q.enemies[0].aggro,false);
+ tap(q,'Space');q.tick(2);assert.equal(q.flags.directing,false);assert.equal(q.player.state,'idle');
+ assert.equal(q.player.z,start.z);assert.ok(q.journey.snapshot().time>0);
+ tap(q,'KeyJ');q.tick(1);assert.equal(q.player.state,'attack');
+});
+
+test('natural arrival completion hands control back while pause freezes its camera clock',async()=>{
+ const q=await boot({cinematics:true});q.startPublic();q.tick(90);q.callbacks().onPause();q.tick(400);
+ assert.equal(q.flags.directing,true);assert.equal(q.journey.snapshot().time,0);
+ q.callbacks().onResume();q.tick(240);assert.equal(q.flags.directing,false);assert.equal(q.flags.paused,false);
+ q.press('KeyW');q.tick(20);q.release('KeyW');assert.ok(q.player.z<18);
+});
+
+test('the warden intro releases a captured mouse without pausing or spending combat time',async()=>{
+ const q=await boot({cinematics:true});q.startPublic();tap(q,'Enter');q.tick(1);q.pointerLock(true);
+ q.player.x=0;q.player.z=-12.5;q.tick(1);assert.equal(q.flags.directing,true);assert.equal(q.boss.state,'awaken');
+ const stamp=q.journey.snapshot().time,hp=q.player.hp;q.pointerLock(false);q.tick(90);
+ assert.equal(q.flags.paused,false);assert.equal(q.flags.directing,true);assert.equal(q.journey.snapshot().time,stamp);assert.equal(q.player.hp,hp);
+ tap(q,'Enter');q.tick(1);assert.equal(q.flags.directing,false);assert.equal(q.flags.paused,false);
+});
+
+test('continuing, retrying and reduced-motion play bypass arrival direction',async()=>{
+ const q=await boot({cinematics:true});q.startPublic(true);assert.equal(q.flags.directing,false);
+ q.startPublic(false);assert.equal(q.flags.directing,true);q.retry();assert.equal(q.flags.directing,false);
+ const reduced=await boot({cinematics:true,settings:{shake:false}});reduced.startPublic();assert.equal(reduced.flags.directing,false);
 });

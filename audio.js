@@ -103,9 +103,17 @@ function create(options={}){
  function play(event,config={}){
   if(!playable()||(paused&&!['ui','memory','relic','checkpoint'].includes(event)))return;
   const t=now(),heavy=Boolean(config.heavy),combo=Number(config.combo)||0;
-  const interval={footstep:.11,swing:.055,hit:.035,bodyhit:.07,guard:.065,parry:.12,checkpoint:1,awaken:.8,heal:.5,memory:.8,relic:.6,bell:2,ui:.06}[event]||.03;
+  const interval={footstep:.11,swing:.055,hit:.035,bodyhit:.07,guard:.065,parry:.12,checkpoint:1,awaken:.8,heal:.5,memory:.8,relic:.6,bell:2,arrival:2,location:2,ui:.06}[event]||.03;
   if(t-(lastEvent.has(event)?lastEvent.get(event):-100)<interval)return;lastEvent.set(event,t);
   switch(event){
+   case 'arrival':
+    // A short unresolved oath motif, leaving the rain and footsteps in front.
+    bell(110,.043,t,3,-.35,4.8, musicBus);
+    for(const [i,f]of [164.814,146.832,123.471].entries())oscillator({frequency:f,type:'sine',volume:.021-i*.003,attack:.24,duration:2.6,time:t+.5+i*.72,config:{x:(i-1)*.2},send:.52,bus:musicBus});
+    noise({duration:3.2,volume:.014,attack:.85,type:'bandpass',frequency:430,end:1100,q:.5,time:t,send:.5,brown:true,bus:musicBus});break;
+   case 'location':
+    bell(164.814,.018,t,5,.3,2.8,musicBus);
+    oscillator({frequency:246.942,type:'sine',volume:.012,attack:.15,duration:1.8,time:t+.3,config:{x:-.2},send:.5,bus:musicBus});break;
    case 'step':case 'footstep':{
     const loud=heavy?1.65:1,offset=random()*.013;
     oscillator({frequency:heavy?85:118+random()*25,end:heavy?39:65,type:'triangle',duration:heavy?.15:.1,volume:.046*loud,time:t,config,send:.09});

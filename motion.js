@@ -8,7 +8,8 @@ function createAnimator(actor,T){
   const find=re=>clips.find(c=>re.test(c.name));
   const defs={idle:find(/idle|standing|breath/i),walk:find(/walk/i),run:find(/sprint|run/i)||find(/jog/i),attack:find(/attack|slash|strike/i),hit:find(/hit|hurt|damage/i),jump:find(/jump/i),kick:find(/kick/i)};
   for(const [key,clip]of Object.entries(defs))if(clip){const action=mix.clipAction(clip);action.enabled=true;action.clampWhenFinished=true;action.setLoop(T.LoopRepeat,Infinity);action.play();action.setEffectiveWeight(0);actions[key]=action;}
-  let lastState='',lastTime=0,clock=0,locomotion=0,clothVelocity=0,lastSpeed=0,guardBlend=0,turnLean=0;
+  let lastState='',lastTime=0,clock=0,locomotion=0,clothVelocity=0,lastSpeed=0,guardBlend=0,turnLean=0,combatBlend=0,landingAge=1;
+  let clothLag=0,clothYaw=0,clothYawVelocity=0,clothNormalAge=0;
   const previousPivot=new T.Quaternion(),posePivot=new T.Quaternion(),rollAxis=new T.Vector3(),localTravel=new T.Vector3(),identity=new T.Quaternion();
   const axis=new T.Vector3(),parentQ=new T.Quaternion(),worldQ=new T.Quaternion(),deltaQ=new T.Quaternion(),rootQ=new T.Quaternion(),flashColor=new T.Color(),bonePoint=new T.Vector3(),childPoint=new T.Vector3(),currentDirection=new T.Vector3(),wantedDirection=new T.Vector3(),aimDelta=new T.Quaternion(),parentInverse=new T.Quaternion(),localDelta=new T.Quaternion(),swordQuaternion=new T.Quaternion();
   function offset(bone,x=0,y=0,z=0){
@@ -24,7 +25,7 @@ function createAnimator(actor,T){
   }
   function authoredSword(time,a,o){
     const side=actor.anatomyRightSign||-1,index=a.profile.index??a.profile.combo??o.comboIndex??0,flip=index%2===1?-1:1,wind=a.wind,active=a.active,end=a.duration;
-    const ready={u:[side*.24,-.94,.24],f:[side*.06,-.54,.84],s:[side*.06,-.48,.88],x:0,y:0};
+    const ready={u:[side*(.24+.03*combatBlend),-.94+.11*combatBlend,.24+.24*combatBlend],f:[side*.06,-.54+.26*combatBlend,.84+.12*combatBlend],s:[side*.06,-.48+.33*combatBlend,.88+.10*combatBlend],x:0,y:0};
     const anticipate=a.heavy?{u:[side*.24,.72,.65],f:[-side*.18,.93,-.31],s:[0,.91,-.42],x:-.11,y:-.18}:{u:[side*.77,-.04,-.64],f:[-side*.14,.40,-.90],s:[side*.50*flip,.48,-.72],x:-.03,y:-.52*flip};
     const contact=a.heavy?{u:[side*.16,-.42,.89],f:[-side*.06,-.50,.86],s:[0,-.40,.92],x:.22,y:.13}:{u:[-side*.20,-.34,.92],f:[-side*.54,-.10,.84],s:[0,-.16,.99],x:.09,y:.60*flip};
     const follow=a.heavy?{u:[side*.15,-.87,.46],f:[-side*.08,-.74,.67],s:[.05,-.77,.64],x:.16,y:.16}:{u:[-side*.75,-.28,.59],f:[-side*.72,-.52,-.05],s:[-side*.96*flip,-.20,-.20],x:.07,y:.81*flip};
@@ -43,7 +44,12 @@ function createAnimator(actor,T){
     // The free arm counters torque; the hips absorb contact while authored source
     // foot poses remain the base, avoiding a rigid torso-only sword wave.
     aim(bones.leftUpper,bones.leftFore,[-side*.45,-.70,.55],.8);aim(bones.leftFore,bones.leftHand,[side*.10,-.28,.95],.8);
-    const plant=Math.sin(Math.PI*clamp(time/end,0,1));offset(bones.leftThigh,-.07*plant,0,-.035*plant);offset(bones.leftShin,.10*plant,0,0);offset(bones.rightThigh,.06*plant,0,.025*plant);offset(bones.rightShin,.08*plant,0,0);
+    const plant=Math.sin(Math.PI*clamp(time/end,0,1)),coil=smooth(time/Math.max(.05,wind*.72))*(1-smooth((time-wind)/Math.max(.07,active))),drive=smooth((time-wind)/Math.max(.07,active))*(1-smooth((time-wind-active-a.followThrough)/Math.max(.08,a.recovery)));
+    // The hips load before the shoulders, then the opposite leg catches the
+    // weight. The controller still owns all translation and blade hit timing.
+    offset(bones.hips,-.025*coil+.025*drive,-yaw*.14,0);
+    offset(bones.leftThigh,-.07*plant-.055*coil+.045*drive,0,-.035*plant);offset(bones.leftShin,.10*plant+.09*coil,0,0);
+    offset(bones.rightThigh,.06*plant+.045*coil-.055*drive,0,.025*plant);offset(bones.rightShin,.08*plant+.07*drive,0,0);
   }
   function sampleAttack(time,o){
     const boss=actor.isBoss,a=o.attack||{},heavy=o.state==='heavy'||a.kind==='heavy'||a.type==='slam'||/overhead|cleave|slam/.test(a.pose||''),wind=a.windup??(heavy?.49:.22),active=a.active??(heavy?.27:.22),followThrough=a.followThrough??0,recovery=a.recovery??(heavy?.48:.30),duration=a.total||wind+active+followThrough+recovery;
@@ -57,6 +63,9 @@ function createAnimator(actor,T){
     const dt=clamp(o.dt||0,0,.05),t=Number.isFinite(o.t)?o.t:clock,time=Math.max(0,o.time||0),state=o.state||'idle',speed=Math.max(0,o.speed||0),dead=!!o.dead||state==='dead';clock+=dt;
     const attacking=state==='light'||state==='heavy'||state==='attack',hurt=state==='hurt'||state==='stagger',rolling=state==='roll'||state==='dodge',healing=state==='heal';
     const newAction=state!==lastState||time<lastTime-.05;
+    if(newAction&&(lastState==='roll'||lastState==='dodge')&&!rolling)landingAge=0;
+    landingAge+=dt;
+    combatBlend+=((o.combat||o.guarding?1:0)-combatBlend)*(1-Math.exp(-6*dt));
     // Author all skeletal directions in an unrolled frame. Reusing last frame's
     // pivot here made the limbs fight the tumble and the sockets orbit the body.
     previousPivot.copy(actor.pivot.quaternion);const previousHeight=actor.pivot.position.y;
@@ -86,7 +95,13 @@ function createAnimator(actor,T){
     const spine=bones.spine,chest=bones.chest||spine;
     if(speed>.12&&!attacking&&!rolling&&!hurt&&!dead&&!healing&&localTravel.lengthSq()>.04){const strideYaw=Math.atan2(localTravel.x*(backwards?-1:1),Math.abs(localTravel.z))*.65;offset(bones.hips,0,strideYaw,0);offset(chest,0,-strideYaw*.85,0);}
     if(!attacking&&!rolling&&!dead){
-      const side=actor.anatomyRightSign||-1;aim(bones.rightUpper,bones.rightFore,[side*.24,-.94,.24],.85);aim(bones.rightFore,bones.rightHand,[side*.06,-.54,.84],.9);orientWrist([side*.06,-.48,.88]);
+      const side=actor.anatomyRightSign||-1;aim(bones.rightUpper,bones.rightFore,[side*(.24+.03*combatBlend),-.94+.11*combatBlend,.24+.24*combatBlend],.85);aim(bones.rightFore,bones.rightHand,[side*.06,-.54+.26*combatBlend,.84+.12*combatBlend],.9);orientWrist([side*.06,-.48+.33*combatBlend,.88+.10*combatBlend]);
+      if(!hurt&&!healing){
+        const fatigue=1-clamp(Number.isFinite(o.staminaRatio)?o.staminaRatio:1,0,1),breath=Math.sin(t*(1.65+fatigue*.9)),still=1-clamp(speed/3.5,0,1);
+        offset(chest,breath*(.009+fatigue*.008)*still,0,Math.sin(t*.78)*.003*still);
+        offset(bones.head,-breath*.005*still,clamp(Number(o.yawRate)||0,-3,3)*-.012,0);
+        if(!o.guarding){offset(bones.leftUpper,breath*.008*still,0,-.012*combatBlend);offset(bones.leftFore,-.035*combatBlend,0,0);}
+      }
     }
     guardBlend+=((o.guarding&&!attacking&&!dead&&!rolling?1:0)-guardBlend)*(1-Math.exp(-18*dt));
     if(guardBlend>.002&&!attacking&&!dead&&!rolling){const side=actor.anatomyRightSign||-1;aim(bones.leftUpper,bones.leftFore,[-side*.42,-.48,.77],guardBlend);aim(bones.leftFore,bones.leftHand,[side*.16,.67,.73],guardBlend);offset(chest,.08*guardBlend,-.12*guardBlend,.025*guardBlend);offset(bones.leftThigh,-.12*guardBlend,0,0);offset(bones.leftShin,.18*guardBlend,0,0);offset(bones.rightShin,.12*guardBlend,0,0);offset(bones.rightUpper,-.15*guardBlend,.10*guardBlend,0);}
@@ -127,7 +142,7 @@ function createAnimator(actor,T){
     }else{
       const acceleration=dt>0?clamp((speed-lastSpeed)/dt,-14,14):0;
       turnLean+=(clamp(Number(o.yawRate)||0,-5,5)*clamp(speed/5,0,1)*-.035-turnLean)*(1-Math.exp(-8*dt));
-      if(!attacking&&!hurt&&!dead&&!healing){const lean=clamp(acceleration*.006,-.065,.075);offset(chest,lean,0,turnLean);offset(bones.head,-lean*.45,0,-turnLean*.45);}
+      if(!attacking&&!hurt&&!dead&&!healing){const lean=clamp(acceleration*.006,-.065,.075),brake=clamp(-acceleration/14,0,1),landing=(1-smooth(landingAge/.20))*.10;offset(chest,lean+landing*.15,0,turnLean);offset(bones.head,-lean*.45,0,-turnLean*.45);offset(bones.leftThigh,-landing-brake*.045,0,0);offset(bones.rightThigh,-landing-brake*.035,0,0);offset(bones.leftShin,landing*1.8+brake*.065,0,0);offset(bones.rightShin,landing*1.6+brake*.055,0,0);}
       if(dead){const fall=smooth(time/1.05),side=actor.anatomyRightSign||-1;pivotY=.95-.61*fall;posePivot.setFromAxisAngle(new T.Vector3(0,0,1),(actor.isBoss?-1:1)*1.49*fall);offset(chest,.12*fall,0,0);offset(bones.head,.20*fall,0,0);
         aim(bones.leftUpper,bones.leftFore,[-side*.18,-.97,.12],fall);aim(bones.leftFore,bones.leftHand,[-side*.04,-.94,.32],fall);aim(bones.rightUpper,bones.rightFore,[side*.16,-.97,.18],fall);aim(bones.rightFore,bones.rightHand,[side*.04,-.94,.30],fall);
         offset(bones.leftThigh,-.18*fall,0,0);offset(bones.leftShin,.34*fall,0,0);offset(bones.rightThigh,-.28*fall,0,0);offset(bones.rightShin,.48*fall,0,0);
@@ -139,8 +154,24 @@ function createAnimator(actor,T){
     // Ground the weighted silhouette, rather than a bind-pose box. This is
     // visual-only; gameplay root X/Z and collision remain controller-owned.
     if((rolling||dead||state==='stagger'||lastState==='roll'||lastState==='dodge')&&actor.groundBounds){const ground=actor.groundBounds(),lift=rolling?.025*Math.sin(actor.motionFrame.progress*Math.PI):0,floor=actor.root.position.y+(.018+lift)*actor.root.scale.y;if(Number.isFinite(ground.min)&&(rolling||dead||state==='stagger'||ground.min<floor))actor.pivot.position.y+=(floor-ground.min)/actor.root.scale.y;}
-    const accel=dt>0?(speed-lastSpeed)/dt:0;clothVelocity+=(clamp(accel,-15,15)*.012-clothVelocity*5)*dt;lastSpeed=speed;
-    if(actor.cape){const p=actor.cape.geometry.attributes.position,rest=actor.cape.userData.restPositions;for(let i=0;i<p.count;i++){const at=i*3,x=rest[at],y=rest[at+1],fall=clamp((.64-y)/1.3,0,1);p.setXYZ(i,x+Math.sin(t*2.4+fall*3.2)*.016*fall,y,rest[at+2]-fall*fall*(speed*.035+clothVelocity)+Math.sin(t*3.1+x*7-fall*4)*.022*fall);}p.needsUpdate=true;if(actor._clothFrame++%3===0)actor.cape.geometry.computeVertexNormals();}
+    const accel=dt>0?(speed-lastSpeed)/dt:0;
+    // Damped cloth follows a start, brake and turn with a slight delay; it never
+    // changes the body's root. Pinning the shoulder row prevents rubber cloth.
+    const clothTarget=clamp(speed*.038+clamp(accel,-14,14)*.009,0,.24);
+    clothVelocity+=((clothTarget-clothLag)*64-clothVelocity*15)*dt;clothLag=clamp(clothLag+clothVelocity*dt,-.04,.27);
+    const yawTarget=clamp(Number(o.yawRate)||0,-5,5)*-.025*clamp(speed/3,0,1);
+    clothYawVelocity+=((yawTarget-clothYaw)*52-clothYawVelocity*13)*dt;clothYaw=clamp(clothYaw+clothYawVelocity*dt,-.16,.16);lastSpeed=speed;
+    if(actor.cape){
+      const p=actor.cape.geometry.attributes.position,rest=actor.cape.userData.restPositions,weights=actor.cape.userData.fallWeights,height=actor.cape.userData.height||1.43,width=actor.cape.userData.width||.78,top=height*.5;
+      const tuck=rolling?actor.motionFrame.tuck:dead?smooth(time/.45)*.86:0;
+      for(let i=0;i<p.count;i++){
+        const at=i*3,x=rest[at],y=rest[at+1],fall=weights?weights[i]:clamp((top-y)/height,0,1),free=fall*fall,edge=Math.abs(x)/(width*.5);
+        const gust=.65+.35*Math.sin(t*.68+.7),wind=(Math.sin(t*2.0+x*7-fall*3.6)*.018+Math.sin(t*3.7+x*13-fall*5.6)*.009)*free*gust;
+        p.setXYZ(i,x*(1-tuck*.30*free)+clothYaw*free+wind*.7,y+(top-y)*tuck*.69*Math.min(1,fall*5)+wind*.25*edge,rest[at+2]*(1-tuck*.72*free)-free*clothLag*(1-tuck)+wind+Math.sin(x/width*Math.PI*5+t*2.3)*.010*free+clothYaw*x/width*fall);
+      }
+      p.needsUpdate=true;clothNormalAge+=dt;if(clothNormalAge>=1/24){actor.cape.geometry.computeVertexNormals();clothNormalAge=0;}
+    }
+    actor.motionDetails={combat:combatBlend,landing:Math.max(0,1-landingAge/.2),clothLag,clothYaw};
     actor.hit=Math.max(0,actor.hit-dt);for(const item of actor.materials){const base=item.baseEmissive;item.material.emissive.copy(base);if(actor.hit>0)item.material.emissive.add(flashColor.setRGB(actor.hit*.75,actor.hit*.09,.005));}
     if(actor.shield)actor.shield.visible=!healing&&!dead;
     actor.root.updateWorldMatrix(true,true);actor.updateEquipment();

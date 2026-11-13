@@ -12,12 +12,12 @@ test('optimized production GLB retains its weighted mesh and authored source cli
  const meta=AshenCharacters.getMetadata();assert.equal(Math.round(meta.triangles),59281);assert.equal(meta.bones.length,22);assert.equal(meta.animations.length,9);
  assert.ok(meta.meshes.some(m=>m.skinned));assert.ok(fs.statSync(path.join(__dirname,'assets/knight-v11.glb')).size<3500000);
 });
-function contact(knight,move,distance,height=1.9){
+function contact(knight,move,distance,height=1.9,combat=false){
  let previous=null,hit=false;knight.root.position.set(0,0,0);
  for(let t=0;t<=move.total;t+=1/120){
   const start=move.windup*(knight.isBoss?.65:.45),duration=move.activeEnd-start;
   if(t>start&&t<move.activeEnd){const speed=move.lunge/duration*Math.sin((t-start)/duration*Math.PI);knight.root.position.z=Math.min(distance-(knight.isBoss?1.18:.98),knight.root.position.z+speed/120);}
-  knight.animate({state:'attack',attack:move,time:t,dt:1/120,t,speed:0,comboIndex:move.index});
+  knight.animate({state:'attack',attack:move,time:t,dt:1/120,t,speed:0,comboIndex:move.index,combat});
   const base=knight.weapon.group.localToWorld(knight.weapon.base.clone()),tip=knight.weapon.group.localToWorld(knight.weapon.tip.clone());
   if(previous&&C.samplePose(move,t).active&&C.sweptBladeHit(previous.base,previous.tip,base,tip,{x:0,z:distance,y:0,minY:.32,maxY:height},.4))hit=true;
   previous={base,tip};
@@ -28,3 +28,6 @@ for(const kind of ['light','heavy','critical','dodgeAttack'])for(const distance 
 });
 for(const index of [0,1,2])test('real alternating light cut '+index+' contacts in the controller window',()=>assert.ok(contact(actor,C.getMove('light',index),1.45)));
 for(const index of [0,1,2,4])test('real boss strike '+index+' contacts at combat spacing',()=>assert.ok(contact(enemy,C.getBossMove(index,2),2.3)));
+test('raised combat stance preserves real blade contact for all player strike families',()=>{
+ for(const move of [C.getMove('light',0),C.getMove('light',1),C.getMove('light',2),C.getMove('heavy'),C.getMove('critical'),C.getMove('dodgeAttack')])assert.ok(contact(actor,move,1.45,1.9,true),move.id+' lost contact from the raised stance');
+});

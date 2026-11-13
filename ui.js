@@ -3,7 +3,7 @@
 global.AshenUI={create:function(config={}){
   const $=id=>document.getElementById(id),cache=Object.create(null),timers=new Map();
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
-  let started=false,paused=false,dialogWasPaused=false,resultVisible=false,previousFocus=null,step='',memoryReturn=false;
+  let started=false,paused=false,dialogWasPaused=false,resultVisible=false,previousFocus=null,step='',memoryReturn=false,skipCinematic=null;
   const settings={audio:true,quality:'high',master:.72,music:.65,effects:.85,sensitivity:1,shake:true,hints:true};
   try{
     const stored=JSON.parse(localStorage.getItem('ashen-vow-settings')||'null');
@@ -23,6 +23,7 @@ global.AshenUI={create:function(config={}){
   ];
   function text(id,value){const node=$(id),v=String(value==null?'':value);if(node&&cache[id]!==v){cache[id]=v;node.textContent=v;}}
   function show(node,yes){if(typeof node==='string')node=$(node);if(node)node.classList.toggle('is-hidden',!yes);}
+  function locationVisible(value){const node=$('location-card');node.classList.toggle('show',!!value);node.setAttribute('aria-hidden',String(!value));}
   function after(key,fn,ms){clearTimeout(timers.get(key));timers.set(key,setTimeout(fn,ms));}
   function scale(id,value){const node=$(id),x=clamp(Number(value)||0,0,1);if(node&&cache[id]!==x){cache[id]=x;node.style.transform='scaleX('+x+')';}}
   function modal(){return dialogKeys.some(key=>el[key]&&el[key].open);}
@@ -64,6 +65,7 @@ global.AshenUI={create:function(config={}){
   function restart(){resetSurfaces();show(el.pause,false);paused=false;mode();invoke('onRestart');$('game').focus();}
   function bind(id,fn){const node=$(id);if(node)node.onclick=fn;}
   bind('start-button',()=>begin(false));bind('continue-button',()=>begin(true));bind('retry-button',restart);bind('pause-restart',restart);
+  bind('cinematic-skip',()=>skipCinematic?.());
   bind('resume-button',()=>{api.setPaused(false);invoke('onResume');$('game').focus();});
   bind('hud-pause',()=>{api.setPaused(!paused);invoke(paused?'onPause':'onResume');});
   for(const id of ['title-help','pause-help','hud-help'])bind(id,()=>openDialog('help'));
@@ -92,7 +94,8 @@ global.AshenUI={create:function(config={}){
       if(s.hp!=null){const max=s.maxHp||100;scale('hp-fill',s.hp/max);scale('hp-trail',s.hp/max);text('hp-text',Math.ceil(Math.max(0,s.hp))+' / '+max);document.body.dataset.hp=Math.ceil(s.hp);document.body.dataset.lowHealth=String(s.hp>0&&s.hp/max<.26);}
       if(s.stamina!=null){scale('stamina-fill',s.stamina/(s.maxStamina||100));document.body.dataset.stamina=Math.round(s.stamina);document.body.dataset.exhausted=String(s.stamina<25);}
       if(s.flasks!=null)text('flask-count',s.flasks);
-      if(s.objective!=null)text('objective-text',typeof s.objective==='object'?s.objective.text:s.objective);
+      if(s.objective!=null){const objective=String(typeof s.objective==='object'?s.objective.text:s.objective);if(cache['objective-text']!==objective){text('objective-text',objective);document.body.dataset.objectiveFresh='true';after('objective',()=>{document.body.dataset.objectiveFresh='false';},6500);}}
+      if(s.locked!=null||s.bossHp!=null||s.combat!=null)document.body.dataset.combat=String(!!s.combat||!!s.locked||s.bossHp>0);
       if(s.bossHp!=null){const visible=s.bossVisible!==false&&s.bossMax>0&&s.bossHp>0;show('boss-panel',visible);scale('boss-fill',s.bossHp/(s.bossMax||1));scale('boss-trail',s.bossHp/(s.bossMax||1));if(s.bossName!=null)text('boss-name',s.bossName);if(s.bossTitle!=null)text('boss-title',s.bossTitle);document.body.dataset.bossHp=Math.ceil(s.bossHp);}
       if(s.posture!=null)scale('posture-fill',s.posture/(s.postureMax||100));
       if(s.enemyHp!=null){scale('target-hp',s.enemyHp/(s.enemyMax||1));show('target-detail',!!s.enemyName&&s.enemyHp>0);if(s.enemyName)text('target-name',s.enemyName);}
@@ -107,22 +110,33 @@ global.AshenUI={create:function(config={}){
       if(s.step!=null)api.updateStep(s.step);
     },
     notify:function(message,kind='info'){const node=$('toast');if(kind==='parry'){const caption=$('impact-caption');caption.textContent=String(message).split(' · ')[0];caption.classList.remove('show');void caption.offsetWidth;caption.classList.add('show');after('impact',()=>caption.classList.remove('show'),1100);}node.querySelector('span').textContent=String(message);node.dataset.kind=kind;node.classList.remove('show');void node.offsetWidth;node.classList.add('show');after('toast',()=>node.classList.remove('show'),kind==='checkpoint'?3800:2600);},
-    chapter:function(title,sub=''){text('chapter-title',title);text('chapter-subtitle',sub);const node=$('chapter-card');node.classList.remove('show');void node.offsetWidth;node.classList.add('show');after('chapter',()=>node.classList.remove('show'),3700);},
+    chapter:function(title,sub=''){text('chapter-title',title);text('chapter-subtitle',sub);const node=$('chapter-card');node.classList.remove('show');locationVisible(false);void node.offsetWidth;node.classList.add('show');after('chapter',()=>node.classList.remove('show'),3700);},
+    location:function(title,sub=''){text('location-title',title);text('location-subtitle',sub);const node=$('location-card');locationVisible(false);$('chapter-card').classList.remove('show');void node.offsetWidth;locationVisible(true);after('location',()=>locationVisible(false),4300);},
+    setCinematic:function(active,options={}){const visible=!!active;document.body.dataset.cinematic=String(visible);skipCinematic=visible&&typeof options.skip==='function'?options.skip:null;text('cinematic-title',visible?options.title:'');text('cinematic-subtitle',visible?options.subtitle:'');$('cinematic-frame').setAttribute('aria-hidden',String(!visible));for(const node of [el.hud,el.touch])if(node){node.inert=visible;node.setAttribute('aria-hidden',String(visible));}show('cinematic-skip',!!skipCinematic);if(visible){$('chapter-card').classList.remove('show');locationVisible(false);}else clearTimeout(timers.get('cinematic'));},
     damage:function(amount=1){const node=$('hurt-overlay');node.style.setProperty('--hurt',Math.min(.85,.25+Math.abs(amount)/100));node.classList.remove('active');void node.offsetWidth;node.classList.add('active');after('hurt',()=>node.classList.remove('active'),650);},
     result:function(s={}){
-      const victory=!!s.victory;resultVisible=true;paused=false;show(el.pause,false);show(el.touch,false);show('lock-marker',false);show('interaction',false);show('step-panel',false);show('telegraph',false);show('combat-status',false);
+      const victory=!!s.victory;api.setCinematic(false);resultVisible=true;paused=false;show(el.pause,false);show(el.touch,false);show('lock-marker',false);show('interaction',false);show('step-panel',false);show('telegraph',false);show('combat-status',false);
       $('result-screen').dataset.victory=String(victory);text('result-kicker',victory?'THE LAST BELL RINGS AGAIN':'THE VOW REMAINS');text('result-title',victory?'长夜将尽':'誓约未竟');text('result-copy',victory?'钟声越过废墟。这一次，守望者终于可以离去。':'这并非誓言的终点。余火会记得你来过。');$('retry-button').querySelector('span').textContent=victory?'再次踏入余烬':'从余烬中重新站起';
       show('result-stats',true);const seconds=Math.max(0,Math.floor(s.time||0));text('result-time',Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0'));text('result-kills',s.kills||0);text('result-memories',(Array.isArray(s.memories)?s.memories.length:Number(s.memories)||0)+' / 3');statsInto('result',s.stats||s);
+      const stats=s.stats||s,memories=Array.isArray(s.memories)?s.memories.length:Number(s.memories)||0;
+      const parries=Math.max(0,Number(stats.parries??stats.perfectGuards)||0),damage=Number(stats.damageTaken),executions=Math.max(0,Number(stats.executions??stats.criticals)||0);
+      let imprint=null;
+      if(victory&&Number.isFinite(damage)&&damage===0)imprint=['无瑕誓约','未受伤害，敲响最后的钟声。'];
+      else if(victory&&memories>=3)imprint=['残响收藏者','三道遗落的记忆，随钟声一同归来。'];
+      else if(parries>=3)imprint=['听刃者','完成 '+Math.floor(parries)+' 次精准格挡，在锋芒之间找回余地。'];
+      else if(executions>=1)imprint=['破誓之刃','完成 '+Math.floor(executions)+' 次处决，让守望归于寂静。'];
+      else if(victory)imprint=['长夜行者','穿过雨夜回廊，完成最后的誓言。'];
+      show('result-imprint',!!imprint);text('result-imprint-title',imprint?.[0]||'');text('result-imprint-copy',imprint?.[1]||'');
       $('death-fade').classList.add('active');after('result',()=>{show(el.result,true);mode();$('retry-button').focus();},victory?1250:850);mode();
     },
     setPaused:function(value){paused=!!value;if(!started||resultVisible)paused=false;mode();if(paused)$('resume-button').focus();},
     setStarted:function(value){
       for(const key of dialogKeys)if(el[key]?.open)el[key].close();
-      started=!!value;paused=false;dialogWasPaused=false;resultVisible=false;previousFocus=null;memoryReturn=false;clearTimeout(timers.get('result'));show(el.title,!started);show(el.hud,started);show(el.pause,false);show(el.result,false);$('death-fade').classList.remove('active');mode();if(!started)$('start-button').focus();
+      started=!!value;paused=false;dialogWasPaused=false;resultVisible=false;previousFocus=null;memoryReturn=false;clearTimeout(timers.get('result'));api.setCinematic(false);locationVisible(false);document.body.dataset.combat='false';show(el.title,!started);show(el.hud,started);show(el.pause,false);show(el.result,false);$('death-fade').classList.remove('active');mode();if(!started)$('start-button').focus();
     },
-    setContext:function(value){const s=typeof value==='object'&&value!==null?value:{text:value};text('interaction-text',s.text||'');text('interaction-key',s.key||'F');show('interaction',!!s.text&&s.available!==false);},
+    setContext:function(value){const s=typeof value==='object'&&value!==null?value:{text:value},available=!!s.text&&s.available!==false;text('interaction-text',s.text||'');text('interaction-key',s.key||'F');document.body.dataset.interaction=String(available);show('interaction',available);},
     setLock:function(s={}){show('lock-marker',!!s.visible);if(s.visible){$('lock-marker').style.left=(s.x||0)+'px';$('lock-marker').style.top=(s.y||0)+'px';}},
-    updateStep:function(value){step=String(value||'');text('step-text',step);show('step-panel',settings.hints&&!!step);},
+    updateStep:function(value){step=String(value||'');text('step-text',step);show('step-panel',settings.hints&&!!step);after('step',()=>show('step-panel',false),11500);},
     showDamage:function(x,y,amount,type='normal'){if(typeof x==='object'){const s=x;x=s.x;y=s.y;amount=s.amount;type=s.type||'normal';}const node=document.createElement('span');node.className='damage-number '+String(type).replace(/[^a-z-]/gi,'');node.style.left=(Number(x)||0)+'px';node.style.top=(Number(y)||0)+'px';node.textContent=typeof amount==='number'?Math.round(amount):String(amount);$('damage-numbers').appendChild(node);setTimeout(()=>node.remove(),1050);},
     setCheckpoint:function(available){show('continue-button',!!available);$('start-button').classList.toggle('secondary',!!available);$('start-button').querySelector('span').textContent=available?'重新启程':'踏入余烬';},
     setLoading:function(value){show('loading-strip',!!value);$('start-button').disabled=$('continue-button').disabled=!!value;if(!value)$('loading-strip').querySelector('span').textContent='唤醒庭院…';},

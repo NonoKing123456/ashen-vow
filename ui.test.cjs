@@ -67,3 +67,48 @@ test('controller menu navigation focuses before activation and steps volume with
  const before=q.ui.getSettings().master;q.ui.menuInput('left');assert.ok(q.ui.getSettings().master<before);
  q.ui.menuInput('back');assert.equal(q.ui.isPaused(),false);assert.ok(q.events.some(e=>e[0]==='resume'));
 });
+
+test('cinematic presentation has one optional skip action without changing the game pause or modal state',()=>{
+ const q=boot();q.ui.setStarted(true);let skipped=0;
+ q.ui.setCinematic(true,{title:'雨夜回廊',subtitle:'THE LAST BELL',skip:()=>skipped++});
+ assert.equal(q.document.body.dataset.cinematic,'true');assert.equal(q.ui.isPaused(),false);assert.equal(q.ui.isModalOpen(),false);
+ assert.equal(q.element('game-hud').inert,true);assert.equal(q.element('touch-ui').inert,true);assert.equal(q.element('game-hud').attrs['aria-hidden'],'true');
+ assert.equal(q.element('cinematic-title').textContent,'雨夜回廊');assert.equal(q.element('cinematic-frame').attrs['aria-hidden'],'false');
+ q.element('cinematic-skip').click();assert.equal(skipped,1);
+ q.ui.setCinematic(false);q.element('cinematic-skip').click();assert.equal(skipped,1);assert.equal(q.element('cinematic-frame').attrs['aria-hidden'],'true');
+ assert.equal(q.element('game-hud').inert,false);assert.equal(q.element('touch-ui').inert,false);assert.equal(q.element('game-hud').attrs['aria-hidden'],'false');
+ q.ui.setCinematic(true);assert.equal(q.element('cinematic-skip').classList.contains('is-hidden'),true);
+ q.ui.setStarted(false);assert.equal(q.document.body.dataset.cinematic,'false');
+});
+
+test('location cards and chapter cards hand off without overlapping or injecting markup',()=>{
+ const q=boot();q.ui.chapter('钟门已解封','前往庭院深处');assert.equal(q.element('chapter-card').classList.contains('show'),true);
+ q.ui.location('<b>余火小堂</b>','THE EMBER CHAPEL');assert.equal(q.element('chapter-card').classList.contains('show'),false);
+ assert.equal(q.element('location-card').classList.contains('show'),true);assert.equal(q.element('location-title').textContent,'<b>余火小堂</b>');assert.equal(q.element('location-title').children.length,0);
+ assert.equal(q.element('location-card').attrs['aria-hidden'],'false');
+ q.ui.chapter('守望终结');assert.equal(q.element('location-card').classList.contains('show'),false);assert.equal(q.element('location-card').attrs['aria-hidden'],'true');
+});
+
+test('an interaction owns its layout lane only while available and preserves the secondary combat status',()=>{
+ const q=boot();q.ui.update({status:'精准格挡 · 下一剑强化',telegraph:'突刺',context:{text:'处决'}});
+ assert.equal(q.document.body.dataset.interaction,'true');assert.equal(q.element('interaction').classList.contains('is-hidden'),false);
+ q.ui.setContext({text:'钟门尚未解封',available:false});assert.equal(q.document.body.dataset.interaction,'false');assert.equal(q.element('interaction').classList.contains('is-hidden'),true);
+ assert.equal(q.element('combat-status').textContent,'精准格挡 · 下一剑强化');assert.equal(q.element('telegraph-text').textContent,'突刺');
+ q.ui.setContext(null);assert.equal(q.document.body.dataset.interaction,'false');
+});
+
+test('the objective display does not restart its emphasis timer on every gameplay frame',()=>{
+ const q=boot();q.ui.update({objective:'推开钟门',locked:false,bossHp:0});const count=q.scheduled.size;
+ q.ui.update({objective:'推开钟门',locked:true,bossHp:0});assert.equal(q.scheduled.size,count);assert.equal(q.document.body.dataset.combat,'true');
+ for(const fn of [...q.scheduled.values()])fn();assert.equal(q.document.body.dataset.objectiveFresh,'false');
+ q.ui.update({objective:'敲响最后的钟'});assert.equal(q.document.body.dataset.objectiveFresh,'true');
+});
+
+test('journey imprints reflect real achievements and missing damage data never earns a flawless completion',()=>{
+ const q=boot();q.ui.result({victory:true,kills:3,memories:3,stats:{parries:2,damageTaken:40}});
+ assert.equal(q.element('result-imprint-title').textContent,'残响收藏者');
+ q.ui.result({victory:true,kills:3,stats:{damageTaken:0}});assert.equal(q.element('result-imprint-title').textContent,'无瑕誓约');
+ q.ui.result({victory:true,kills:3,stats:{}});assert.equal(q.element('result-imprint-title').textContent,'长夜行者');
+ q.ui.result({victory:false,kills:0,stats:{parries:3,damageTaken:120}});assert.equal(q.element('result-imprint-title').textContent,'听刃者');
+ q.ui.result({victory:false,stats:{}});assert.equal(q.element('result-imprint').classList.contains('is-hidden'),true);
+});
